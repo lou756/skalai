@@ -1,3 +1,5 @@
+import { SEOAnalyzer } from "@/components/seo/SEOAnalyzer";
+
 const Index = () => {
   return (
     <div className="min-h-screen bg-background">
@@ -5,33 +7,49 @@ const Index = () => {
       <header className="border-b border-border">
         <div className="container mx-auto px-6 py-4">
           <nav className="flex items-center justify-between">
-            <div className="text-xl font-semibold text-foreground">Logo</div>
+            <div className="text-xl font-semibold text-foreground">
+              SEO Agent
+            </div>
             <div className="flex items-center gap-8">
-              <a href="#" className="text-sm text-muted-foreground hover:text-foreground transition-colors">Accueil</a>
-              <a href="#" className="text-sm text-muted-foreground hover:text-foreground transition-colors">À propos</a>
-              <a href="#" className="text-sm text-muted-foreground hover:text-foreground transition-colors">Contact</a>
+              <a 
+                href="#" 
+                className="text-sm text-muted-foreground hover:text-foreground transition-colors"
+              >
+                Comment ça marche
+              </a>
+              <a 
+                href="#" 
+                className="text-sm text-muted-foreground hover:text-foreground transition-colors"
+              >
+                À propos
+              </a>
             </div>
           </nav>
         </div>
       </header>
 
       {/* Main Content */}
-      <main className="container mx-auto px-6">
-        <section className="py-24 text-center">
-          <h1 className="text-5xl font-bold tracking-tight text-foreground mb-6">
-            Bienvenue
+      <main className="container mx-auto px-6 py-12">
+        {/* Hero Section */}
+        <section className="text-center mb-12">
+          <h1 className="text-4xl md:text-5xl font-bold tracking-tight text-foreground mb-4">
+            Analysez la visibilité SEO<br />de votre site
           </h1>
           <p className="text-lg text-muted-foreground max-w-2xl mx-auto">
-            Votre page est prête. Commencez à construire quelque chose d'extraordinaire.
+            Découvrez les problèmes qui empêchent votre site d'apparaître sur Google.
+            Obtenez des recommandations claires et actionnables.
           </p>
         </section>
+
+        {/* SEO Analyzer */}
+        <SEOAnalyzer />
       </main>
 
       {/* Footer */}
       <footer className="border-t border-border mt-auto">
         <div className="container mx-auto px-6 py-8">
           <p className="text-sm text-muted-foreground text-center">
-            © 2025 Votre Entreprise. Tous droits réservés.
+            SEO Agent — Analyse de visibilité Google simplifiée
           </p>
         </div>
       </footer>
