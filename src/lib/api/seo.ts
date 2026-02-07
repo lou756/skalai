@@ -29,6 +29,24 @@ export interface SEOMeta {
   hasTwitterCards: boolean;
 }
 
+export interface ContentAnalysis {
+  wordCount: number;
+  readabilityScore: number;
+  keywordDensity: { keyword: string; count: number; density: number }[];
+  duplicateContent: { text: string; count: number }[];
+  suggestions: {
+    title: string | null;
+    description: string | null;
+    improvements: string[];
+  };
+}
+
+export interface HreflangAnalysis {
+  detected: { lang: string; url: string }[];
+  issues: string[];
+  recommendations: string[];
+}
+
 export interface SEOAnalysisResult {
   url: string;
   score: number;
@@ -53,6 +71,8 @@ export interface SEOAnalysisResult {
   };
   brokenLinks: BrokenLink[];
   gscInstructions: string[];
+  contentAnalysis: ContentAnalysis;
+  hreflangAnalysis: HreflangAnalysis;
 }
 
 export type SEOResponse = {
