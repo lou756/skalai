@@ -47,6 +47,30 @@ export interface HreflangAnalysis {
   recommendations: string[];
 }
 
+export interface ProductData {
+  name: string | null;
+  price: string | null;
+  currency: string | null;
+  availability: string | null;
+  description: string | null;
+  image: string | null;
+  gtin: string | null;
+  mpn: string | null;
+  brand: string | null;
+  sku: string | null;
+  condition: string | null;
+  shipping: boolean;
+  rating: { value: string | null; count: string | null } | null;
+}
+
+export interface MerchantAnalysis {
+  isProductPage: boolean;
+  products: ProductData[];
+  issues: { issue: string; impact: string; fix: string; priority: 'High' | 'Medium' | 'Low' }[];
+  structuredDataFound: boolean;
+  feedRecommendations: string[];
+}
+
 export interface SEOAnalysisResult {
   url: string;
   score: number;
@@ -73,6 +97,7 @@ export interface SEOAnalysisResult {
   gscInstructions: string[];
   contentAnalysis: ContentAnalysis;
   hreflangAnalysis: HreflangAnalysis;
+  merchantAnalysis: MerchantAnalysis;
 }
 
 export type SEOResponse = {
