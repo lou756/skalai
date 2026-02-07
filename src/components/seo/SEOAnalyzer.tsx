@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Search, Loader2, ExternalLink, ClipboardList, Link2Off, FileText, Sparkles, Globe, BookOpen, TrendingUp } from "lucide-react";
+import { Search, Loader2, ExternalLink, ClipboardList, Link2Off, FileText, Sparkles, Globe, BookOpen, TrendingUp, ShoppingCart, Package, Tag, DollarSign, Check, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useToast } from "@/hooks/use-toast";
@@ -371,6 +371,128 @@ export function SEOAnalyzer() {
                   </div>
                 )}
               </div>
+            </div>
+          )}
+
+          {/* Google Merchant Analysis Section */}
+          {result.merchantAnalysis?.isProductPage && (
+            <div className="space-y-4">
+              <div className="flex items-center gap-2">
+                <ShoppingCart className="h-5 w-5 text-orange-600" />
+                <h2 className="text-xl font-semibold">
+                  Analyse Google Merchant Center
+                </h2>
+              </div>
+              
+              {/* Product Cards */}
+              {result.merchantAnalysis.products.length > 0 && (
+                <div className="space-y-3">
+                  {result.merchantAnalysis.products.map((product, index) => (
+                    <div key={index} className="bg-card border rounded-xl p-4">
+                      <div className="flex items-start gap-4">
+                        {product.image && (
+                          <img 
+                            src={product.image} 
+                            alt={product.name || 'Product'} 
+                            className="w-16 h-16 object-cover rounded-lg"
+                          />
+                        )}
+                        <div className="flex-1 min-w-0">
+                          <h3 className="font-medium text-foreground truncate">
+                            {product.name || 'Produit sans nom'}
+                          </h3>
+                          {product.brand && (
+                            <p className="text-sm text-muted-foreground">{product.brand}</p>
+                          )}
+                          <div className="flex items-center gap-4 mt-2 flex-wrap">
+                            {product.price && product.currency && (
+                              <span className="flex items-center gap-1 text-sm font-medium text-green-600">
+                                <DollarSign className="h-3 w-3" />
+                                {product.price} {product.currency}
+                              </span>
+                            )}
+                            {product.availability && (
+                              <span className="flex items-center gap-1 text-sm text-muted-foreground">
+                                <Package className="h-3 w-3" />
+                                {product.availability.includes('InStock') ? 'En stock' : 
+                                 product.availability.includes('OutOfStock') ? 'Rupture' : 'Disponibilité'}
+                              </span>
+                            )}
+                            {product.gtin && (
+                              <span className="flex items-center gap-1 text-xs bg-muted px-2 py-0.5 rounded">
+                                <Tag className="h-3 w-3" />
+                                GTIN: {product.gtin}
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                        <div className="flex flex-col gap-1">
+                          {product.price ? (
+                            <span className="text-green-500"><Check className="h-4 w-4" /></span>
+                          ) : (
+                            <span className="text-red-500"><X className="h-4 w-4" /></span>
+                          )}
+                        </div>
+                      </div>
+                      
+                      {/* Product Checklist */}
+                      <div className="mt-3 pt-3 border-t grid grid-cols-2 md:grid-cols-4 gap-2 text-xs">
+                        <div className={`flex items-center gap-1 ${product.price ? 'text-green-600' : 'text-red-500'}`}>
+                          {product.price ? <Check className="h-3 w-3" /> : <X className="h-3 w-3" />}
+                          Prix
+                        </div>
+                        <div className={`flex items-center gap-1 ${product.availability ? 'text-green-600' : 'text-red-500'}`}>
+                          {product.availability ? <Check className="h-3 w-3" /> : <X className="h-3 w-3" />}
+                          Disponibilité
+                        </div>
+                        <div className={`flex items-center gap-1 ${product.gtin || product.mpn ? 'text-green-600' : 'text-yellow-500'}`}>
+                          {product.gtin || product.mpn ? <Check className="h-3 w-3" /> : <X className="h-3 w-3" />}
+                          GTIN/MPN
+                        </div>
+                        <div className={`flex items-center gap-1 ${product.brand ? 'text-green-600' : 'text-yellow-500'}`}>
+                          {product.brand ? <Check className="h-3 w-3" /> : <X className="h-3 w-3" />}
+                          Marque
+                        </div>
+                        <div className={`flex items-center gap-1 ${product.image ? 'text-green-600' : 'text-red-500'}`}>
+                          {product.image ? <Check className="h-3 w-3" /> : <X className="h-3 w-3" />}
+                          Image
+                        </div>
+                        <div className={`flex items-center gap-1 ${product.description && product.description.length >= 50 ? 'text-green-600' : 'text-yellow-500'}`}>
+                          {product.description && product.description.length >= 50 ? <Check className="h-3 w-3" /> : <X className="h-3 w-3" />}
+                          Description
+                        </div>
+                        <div className={`flex items-center gap-1 ${product.condition ? 'text-green-600' : 'text-muted-foreground'}`}>
+                          {product.condition ? <Check className="h-3 w-3" /> : <X className="h-3 w-3" />}
+                          Condition
+                        </div>
+                        <div className={`flex items-center gap-1 ${product.shipping ? 'text-green-600' : 'text-muted-foreground'}`}>
+                          {product.shipping ? <Check className="h-3 w-3" /> : <X className="h-3 w-3" />}
+                          Livraison
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {/* Structured Data Status */}
+              <div className={`rounded-lg p-4 ${result.merchantAnalysis.structuredDataFound ? 'bg-green-50 border border-green-200' : 'bg-yellow-50 border border-yellow-200'}`}>
+                <p className={`text-sm font-medium ${result.merchantAnalysis.structuredDataFound ? 'text-green-700' : 'text-yellow-700'}`}>
+                  {result.merchantAnalysis.structuredDataFound 
+                    ? '✅ Données structurées Product (JSON-LD) détectées' 
+                    : '⚠️ Aucune donnée structurée Product détectée - Requis pour Google Shopping'}
+                </p>
+              </div>
+
+              {/* Feed Recommendations */}
+              {result.merchantAnalysis.feedRecommendations.length > 0 && (
+                <div className="bg-card border rounded-xl p-6 space-y-2">
+                  <h3 className="font-medium text-foreground mb-3">Guide Google Merchant Center</h3>
+                  {result.merchantAnalysis.feedRecommendations.map((rec, i) => (
+                    <p key={i} className="text-sm text-muted-foreground">{rec}</p>
+                  ))}
+                </div>
+              )}
             </div>
           )}
         </div>
