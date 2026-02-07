@@ -19,6 +19,24 @@ interface BrokenLink {
   error: string | null;
 }
 
+interface ContentAnalysis {
+  wordCount: number;
+  readabilityScore: number;
+  keywordDensity: { keyword: string; count: number; density: number }[];
+  duplicateContent: { text: string; count: number }[];
+  suggestions: {
+    title: string | null;
+    description: string | null;
+    improvements: string[];
+  };
+}
+
+interface HreflangAnalysis {
+  detected: { lang: string; url: string }[];
+  issues: string[];
+  recommendations: string[];
+}
+
 interface SEOAnalysisResult {
   url: string;
   score: number;
@@ -54,6 +72,8 @@ interface SEOAnalysisResult {
   };
   brokenLinks: BrokenLink[];
   gscInstructions: string[];
+  contentAnalysis: ContentAnalysis;
+  hreflangAnalysis: HreflangAnalysis;
 }
 
 Deno.serve(async (req) => {
@@ -113,6 +133,7 @@ Deno.serve(async (req) => {
     }
 
     const html = scrapeData.data?.html || scrapeData.html || '';
+    const markdown = scrapeData.data?.markdown || scrapeData.markdown || '';
     const metadata = scrapeData.data?.metadata || scrapeData.metadata || {};
     const links = scrapeData.data?.links || scrapeData.links || [];
 
@@ -134,8 +155,14 @@ Deno.serve(async (req) => {
     // Generate GSC instructions
     const gscInstructions = generateGSCInstructions(formattedUrl, sitemap, robotsTxt);
     
-    // Analyze and generate issues
-    const issues = generateIssues(meta, robotsTxt, sitemap, performance, formattedUrl, brokenLinks);
+    // Analyze content
+    const contentAnalysis = await analyzeContent(markdown, meta, formattedUrl);
+    
+    // Analyze hreflang
+    const hreflangAnalysis = analyzeHreflang(html, meta.language);
+    
+    // Analyze and generate issues (include content issues)
+    const issues = generateIssues(meta, robotsTxt, sitemap, performance, formattedUrl, brokenLinks, contentAnalysis, hreflangAnalysis);
     
     // Calculate score
     const score = calculateScore(issues);
@@ -150,6 +177,8 @@ Deno.serve(async (req) => {
       performance,
       brokenLinks,
       gscInstructions,
+      contentAnalysis,
+      hreflangAnalysis,
     };
 
     console.log('Analysis complete. Score:', score);
@@ -381,6 +410,191 @@ function generateGSCInstructions(url: string, sitemap: { found: boolean; url: st
   return instructions;
 }
 
+async function analyzeContent(
+  markdown: string,
+  meta: { title: string | null; description: string | null },
+  url: string
+): Promise<ContentAnalysis> {
+  // Word count
+  const words = markdown.split(/\s+/).filter(w => w.length > 0);
+  const wordCount = words.length;
+  
+  // Calculate readability (simplified Flesch-like score)
+  const sentences = markdown.split(/[.!?]+/).filter(s => s.trim().length > 0);
+  const avgWordsPerSentence = sentences.length > 0 ? wordCount / sentences.length : 0;
+  const readabilityScore = Math.max(0, Math.min(100, 100 - (avgWordsPerSentence - 15) * 3));
+  
+  // Keyword density (top 10 words, excluding common words)
+  const stopWords = new Set(['le', 'la', 'les', 'de', 'du', 'des', 'un', 'une', 'et', 'en', 'à', 'pour', 'que', 'qui', 'dans', 'sur', 'par', 'avec', 'ce', 'cette', 'the', 'a', 'an', 'and', 'or', 'but', 'in', 'on', 'at', 'to', 'for', 'of', 'with', 'by', 'is', 'are', 'was', 'were', 'be', 'been', 'being', 'have', 'has', 'had', 'do', 'does', 'did', 'will', 'would', 'could', 'should', 'may', 'might', 'must', 'shall', 'can', 'need', 'it', 'its', 'this', 'that', 'these', 'those']);
+  
+  const wordFrequency: Record<string, number> = {};
+  words.forEach(word => {
+    const cleaned = word.toLowerCase().replace(/[^a-zàâäéèêëïîôùûüç]/g, '');
+    if (cleaned.length > 3 && !stopWords.has(cleaned)) {
+      wordFrequency[cleaned] = (wordFrequency[cleaned] || 0) + 1;
+    }
+  });
+  
+  const keywordDensity = Object.entries(wordFrequency)
+    .map(([keyword, count]) => ({
+      keyword,
+      count,
+      density: Math.round((count / wordCount) * 1000) / 10,
+    }))
+    .sort((a, b) => b.count - a.count)
+    .slice(0, 10);
+  
+  // Detect duplicate content (repeated paragraphs)
+  const paragraphs = markdown.split(/\n\n+/).filter(p => p.trim().length > 50);
+  const paragraphCounts: Record<string, number> = {};
+  paragraphs.forEach(p => {
+    const normalized = p.trim().toLowerCase().substring(0, 100);
+    paragraphCounts[normalized] = (paragraphCounts[normalized] || 0) + 1;
+  });
+  
+  const duplicateContent = Object.entries(paragraphCounts)
+    .filter(([_, count]) => count > 1)
+    .map(([text, count]) => ({ text: text.substring(0, 50) + '...', count }));
+  
+  // Generate suggestions using AI
+  const suggestions = await generateSEOSuggestions(meta, markdown, url);
+  
+  return {
+    wordCount,
+    readabilityScore: Math.round(readabilityScore),
+    keywordDensity,
+    duplicateContent,
+    suggestions,
+  };
+}
+
+async function generateSEOSuggestions(
+  meta: { title: string | null; description: string | null },
+  content: string,
+  url: string
+): Promise<{ title: string | null; description: string | null; improvements: string[] }> {
+  const lovableApiKey = Deno.env.get('LOVABLE_API_KEY');
+  
+  if (!lovableApiKey) {
+    console.log('LOVABLE_API_KEY not available, skipping AI suggestions');
+    return { title: null, description: null, improvements: [] };
+  }
+  
+  try {
+    const contentPreview = content.substring(0, 1500);
+    const prompt = `Analyse ce contenu web et génère des suggestions SEO en français.
+
+URL: ${url}
+Titre actuel: ${meta.title || 'Aucun'}
+Description actuelle: ${meta.description || 'Aucune'}
+
+Contenu (extrait):
+${contentPreview}
+
+Réponds UNIQUEMENT en JSON valide avec cette structure exacte:
+{
+  "suggestedTitle": "Nouveau titre optimisé SEO (max 60 caractères)",
+  "suggestedDescription": "Nouvelle meta description optimisée (max 155 caractères)",
+  "improvements": ["amélioration 1", "amélioration 2", "amélioration 3"]
+}`;
+
+    const response = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${lovableApiKey}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        model: 'google/gemini-2.5-flash',
+        messages: [
+          { role: 'user', content: prompt }
+        ],
+        max_tokens: 500,
+      }),
+    });
+
+    if (!response.ok) {
+      console.error('AI Gateway error:', response.status);
+      return { title: null, description: null, improvements: [] };
+    }
+
+    const aiData = await response.json();
+    const aiContent = aiData.choices?.[0]?.message?.content || '';
+    
+    // Parse JSON from response
+    const jsonMatch = aiContent.match(/\{[\s\S]*\}/);
+    if (jsonMatch) {
+      const parsed = JSON.parse(jsonMatch[0]);
+      return {
+        title: parsed.suggestedTitle || null,
+        description: parsed.suggestedDescription || null,
+        improvements: parsed.improvements || [],
+      };
+    }
+    
+    return { title: null, description: null, improvements: [] };
+  } catch (error) {
+    console.error('Error generating AI suggestions:', error);
+    return { title: null, description: null, improvements: [] };
+  }
+}
+
+function analyzeHreflang(html: string, currentLang: string | null): HreflangAnalysis {
+  const detected: { lang: string; url: string }[] = [];
+  const issues: string[] = [];
+  const recommendations: string[] = [];
+  
+  // Extract hreflang tags
+  const hreflangRegex = /<link[^>]*hreflang=["']([^"']+)["'][^>]*href=["']([^"']+)["'][^>]*>/gi;
+  const hreflangRegex2 = /<link[^>]*href=["']([^"']+)["'][^>]*hreflang=["']([^"']+)["'][^>]*>/gi;
+  
+  let match;
+  while ((match = hreflangRegex.exec(html)) !== null) {
+    detected.push({ lang: match[1], url: match[2] });
+  }
+  while ((match = hreflangRegex2.exec(html)) !== null) {
+    detected.push({ lang: match[2], url: match[1] });
+  }
+  
+  // Check for x-default
+  const hasXDefault = detected.some(d => d.lang === 'x-default');
+  
+  // Generate issues and recommendations
+  if (detected.length === 0 && currentLang) {
+    issues.push('Aucune balise hreflang détectée');
+    recommendations.push('Ajoutez des balises hreflang si votre site existe en plusieurs langues');
+  }
+  
+  if (detected.length > 0 && !hasXDefault) {
+    issues.push('Balise hreflang x-default manquante');
+    recommendations.push('Ajoutez une balise hreflang="x-default" pointant vers la version par défaut');
+  }
+  
+  // Check for self-referencing
+  if (detected.length > 0 && currentLang) {
+    const hasSelfRef = detected.some(d => d.lang === currentLang || d.lang.startsWith(currentLang + '-'));
+    if (!hasSelfRef) {
+      issues.push('La page ne fait pas référence à elle-même dans les hreflang');
+      recommendations.push('Chaque page doit inclure un hreflang pointant vers elle-même');
+    }
+  }
+  
+  // Check for common language codes
+  const validLangCodes = ['fr', 'en', 'es', 'de', 'it', 'pt', 'nl', 'ru', 'zh', 'ja', 'ko', 'ar', 'x-default'];
+  detected.forEach(d => {
+    const baseLang = d.lang.split('-')[0].toLowerCase();
+    if (!validLangCodes.includes(baseLang) && d.lang !== 'x-default') {
+      issues.push(`Code langue potentiellement invalide: ${d.lang}`);
+    }
+  });
+  
+  if (detected.length > 0) {
+    recommendations.push(`${detected.length} version(s) linguistique(s) détectée(s): ${detected.map(d => d.lang).join(', ')}`);
+  }
+  
+  return { detected, issues, recommendations };
+}
+
 function extractPerformanceInfo(html: string) {
   const hasLazyLoading = /loading=["']lazy["']/i.test(html);
   const hasViewportMeta = /<meta[^>]*name=["']viewport["']/i.test(html);
@@ -397,7 +611,9 @@ function generateIssues(
   sitemap: Awaited<ReturnType<typeof checkSitemap>>,
   performance: ReturnType<typeof extractPerformanceInfo>,
   url: string,
-  brokenLinks: { url: string; statusCode: number | null; error: string | null }[]
+  brokenLinks: { url: string; statusCode: number | null; error: string | null }[],
+  contentAnalysis: ContentAnalysis,
+  hreflangAnalysis: HreflangAnalysis
 ): SEOIssue[] {
   const issues: SEOIssue[] = [];
   let issueId = 1;
@@ -606,6 +822,56 @@ function generateIssues(
       fixType: 'manual',
     });
   }
+
+  // Content analysis issues
+  if (contentAnalysis.wordCount < 300) {
+    issues.push({
+      id: `issue-${issueId++}`,
+      issue: 'Contenu trop court',
+      impact: 'Les pages avec moins de 300 mots sont souvent considérées comme manquant de profondeur par Google.',
+      fix: `Enrichissez votre contenu avec plus d'informations pertinentes. Actuellement : ${contentAnalysis.wordCount} mots.`,
+      priority: 'Medium',
+      category: 'Contenu',
+      fixType: 'manual',
+    });
+  }
+
+  if (contentAnalysis.readabilityScore < 50) {
+    issues.push({
+      id: `issue-${issueId++}`,
+      issue: 'Lisibilité à améliorer',
+      impact: 'Un contenu difficile à lire peut augmenter le taux de rebond et réduire l\'engagement.',
+      fix: 'Simplifiez vos phrases et utilisez des paragraphes plus courts. Score actuel : ' + contentAnalysis.readabilityScore + '/100.',
+      priority: 'Low',
+      category: 'Contenu',
+      fixType: 'manual',
+    });
+  }
+
+  if (contentAnalysis.duplicateContent.length > 0) {
+    issues.push({
+      id: `issue-${issueId++}`,
+      issue: 'Contenu dupliqué détecté',
+      impact: 'Le contenu répétitif peut être pénalisé par Google et nuit à l\'expérience utilisateur.',
+      fix: `${contentAnalysis.duplicateContent.length} section(s) répétée(s) trouvée(s). Variez votre contenu.`,
+      priority: 'Medium',
+      category: 'Contenu',
+      fixType: 'manual',
+    });
+  }
+
+  // Hreflang issues
+  hreflangAnalysis.issues.forEach(issue => {
+    issues.push({
+      id: `issue-${issueId++}`,
+      issue: issue,
+      impact: 'Les problèmes hreflang peuvent empêcher Google de servir la bonne version linguistique à vos visiteurs.',
+      fix: hreflangAnalysis.recommendations[0] || 'Vérifiez votre configuration hreflang.',
+      priority: 'Medium',
+      category: 'Multilingue',
+      fixType: 'manual',
+    });
+  });
 
   return issues;
 }

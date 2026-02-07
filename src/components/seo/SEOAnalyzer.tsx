@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Search, Loader2, ExternalLink, ClipboardList, Link2Off, FileText } from "lucide-react";
+import { Search, Loader2, ExternalLink, ClipboardList, Link2Off, FileText, Sparkles, Globe, BookOpen, TrendingUp } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useToast } from "@/hooks/use-toast";
@@ -7,6 +7,7 @@ import { analyzeSEO, type SEOAnalysisResult } from "@/lib/api/seo";
 import { SEOScoreCard } from "./SEOScoreCard";
 import { SEOIssueCard } from "./SEOIssueCard";
 import { SEOChecklist } from "./SEOChecklist";
+import { Progress } from "@/components/ui/progress";
 
 export function SEOAnalyzer() {
   const { toast } = useToast();
@@ -236,6 +237,139 @@ export function SEOAnalyzer() {
                     {result.sitemap.isValid ? '✓ Oui' : '✗ Non'}
                   </span>
                 </div>
+              </div>
+            </div>
+          )}
+
+          {/* Content Analysis Section */}
+          {result.contentAnalysis && (
+            <div className="space-y-4">
+              <div className="flex items-center gap-2">
+                <BookOpen className="h-5 w-5 text-purple-600" />
+                <h2 className="text-xl font-semibold">
+                  Analyse du contenu
+                </h2>
+              </div>
+              <div className="bg-card border rounded-xl p-6 space-y-4">
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <p className="text-sm text-muted-foreground">Nombre de mots</p>
+                    <p className="text-2xl font-bold">{result.contentAnalysis.wordCount}</p>
+                  </div>
+                  <div>
+                    <p className="text-sm text-muted-foreground">Score de lisibilité</p>
+                    <div className="flex items-center gap-2">
+                      <Progress value={result.contentAnalysis.readabilityScore} className="flex-1" />
+                      <span className="text-sm font-medium">{result.contentAnalysis.readabilityScore}/100</span>
+                    </div>
+                  </div>
+                </div>
+
+                {result.contentAnalysis.keywordDensity.length > 0 && (
+                  <div>
+                    <p className="text-sm font-medium text-muted-foreground mb-2">Mots-clés principaux</p>
+                    <div className="flex flex-wrap gap-2">
+                      {result.contentAnalysis.keywordDensity.slice(0, 6).map((kw, i) => (
+                        <span key={i} className="bg-muted px-2 py-1 rounded text-sm">
+                          {kw.keyword} <span className="text-muted-foreground">({kw.density}%)</span>
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {result.contentAnalysis.duplicateContent.length > 0 && (
+                  <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3">
+                    <p className="text-sm font-medium text-yellow-700 mb-1">⚠️ Contenu dupliqué détecté</p>
+                    <p className="text-xs text-yellow-600">
+                      {result.contentAnalysis.duplicateContent.length} section(s) répétée(s) dans la page
+                    </p>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* AI Suggestions Section */}
+          {result.contentAnalysis?.suggestions && (result.contentAnalysis.suggestions.title || result.contentAnalysis.suggestions.description || result.contentAnalysis.suggestions.improvements.length > 0) && (
+            <div className="space-y-4">
+              <div className="flex items-center gap-2">
+                <Sparkles className="h-5 w-5 text-amber-500" />
+                <h2 className="text-xl font-semibold">
+                  Suggestions IA
+                </h2>
+              </div>
+              <div className="bg-gradient-to-br from-amber-50 to-orange-50 border border-amber-200 rounded-xl p-6 space-y-4">
+                {result.contentAnalysis.suggestions.title && (
+                  <div>
+                    <p className="text-sm font-medium text-amber-700 mb-1">💡 Titre suggéré</p>
+                    <p className="text-foreground bg-white/50 rounded px-3 py-2 text-sm">
+                      {result.contentAnalysis.suggestions.title}
+                    </p>
+                  </div>
+                )}
+                {result.contentAnalysis.suggestions.description && (
+                  <div>
+                    <p className="text-sm font-medium text-amber-700 mb-1">💡 Meta description suggérée</p>
+                    <p className="text-foreground bg-white/50 rounded px-3 py-2 text-sm">
+                      {result.contentAnalysis.suggestions.description}
+                    </p>
+                  </div>
+                )}
+                {result.contentAnalysis.suggestions.improvements.length > 0 && (
+                  <div>
+                    <p className="text-sm font-medium text-amber-700 mb-2">🚀 Améliorations recommandées</p>
+                    <ul className="space-y-1">
+                      {result.contentAnalysis.suggestions.improvements.map((imp, i) => (
+                        <li key={i} className="text-sm text-foreground flex items-start gap-2">
+                          <TrendingUp className="h-4 w-4 text-amber-500 shrink-0 mt-0.5" />
+                          {imp}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* Hreflang Analysis Section */}
+          {result.hreflangAnalysis && (result.hreflangAnalysis.detected.length > 0 || result.hreflangAnalysis.issues.length > 0) && (
+            <div className="space-y-4">
+              <div className="flex items-center gap-2">
+                <Globe className="h-5 w-5 text-blue-600" />
+                <h2 className="text-xl font-semibold">
+                  Analyse multilingue
+                </h2>
+              </div>
+              <div className="bg-card border rounded-xl p-6 space-y-4">
+                {result.hreflangAnalysis.detected.length > 0 && (
+                  <div>
+                    <p className="text-sm font-medium text-muted-foreground mb-2">Versions linguistiques détectées</p>
+                    <div className="flex flex-wrap gap-2">
+                      {result.hreflangAnalysis.detected.map((h, i) => (
+                        <a
+                          key={i}
+                          href={h.url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="bg-blue-50 text-blue-700 px-3 py-1 rounded-full text-sm hover:bg-blue-100 transition-colors flex items-center gap-1"
+                        >
+                          {h.lang}
+                          <ExternalLink className="h-3 w-3" />
+                        </a>
+                      ))}
+                    </div>
+                  </div>
+                )}
+                
+                {result.hreflangAnalysis.recommendations.length > 0 && (
+                  <div className="space-y-1">
+                    {result.hreflangAnalysis.recommendations.map((rec, i) => (
+                      <p key={i} className="text-sm text-muted-foreground">{rec}</p>
+                    ))}
+                  </div>
+                )}
               </div>
             </div>
           )}
