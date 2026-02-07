@@ -19,10 +19,12 @@ export function SEOChecklist({ result }: SEOChecklistProps) {
     { label: "URL canonique définie", passed: !!result.meta.canonical },
     { label: "Fichier robots.txt présent", passed: result.robotsTxt.found },
     { label: "Sitemap XML trouvé", passed: result.sitemap.found },
+    { label: "Structure sitemap valide", passed: result.sitemap.isValid },
     { label: "Balises Open Graph", passed: result.meta.hasOgTags },
     { label: "Twitter Cards", passed: result.meta.hasTwitterCards },
     { label: "Meta viewport (mobile)", passed: result.performance.hasViewportMeta },
     { label: "Page indexable", passed: !result.meta.robots?.includes('noindex') },
+    { label: "Aucun lien cassé", passed: result.brokenLinks.length === 0 },
   ];
 
   const passedCount = checks.filter(c => c.passed).length;

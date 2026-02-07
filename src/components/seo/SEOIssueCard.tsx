@@ -1,4 +1,4 @@
-import { AlertCircle, AlertTriangle, Info, ChevronDown, ChevronUp } from "lucide-react";
+import { AlertCircle, AlertTriangle, Info, ChevronDown, ChevronUp, Wrench, Settings, Zap } from "lucide-react";
 import { useState } from "react";
 import { cn } from "@/lib/utils";
 import type { SEOIssue } from "@/lib/api/seo";
@@ -36,7 +36,33 @@ export function SEOIssueCard({ issue }: SEOIssueCardProps) {
     }
   };
 
+  const getFixTypeInfo = () => {
+    switch (issue.fixType) {
+      case "manual":
+        return {
+          icon: <Wrench className="h-3 w-3" />,
+          label: "Correction manuelle",
+          color: "text-orange-600",
+        };
+      case "automated":
+        return {
+          icon: <Zap className="h-3 w-3" />,
+          label: "Automatisable",
+          color: "text-green-600",
+        };
+      case "semi-automated":
+        return {
+          icon: <Settings className="h-3 w-3" />,
+          label: "Semi-automatisé",
+          color: "text-blue-600",
+        };
+      default:
+        return null;
+    }
+  };
+
   const styles = getPriorityStyles();
+  const fixTypeInfo = getFixTypeInfo();
 
   return (
     <div className={cn("rounded-lg border p-4", styles.bg)}>
@@ -54,6 +80,12 @@ export function SEOIssueCard({ issue }: SEOIssueCardProps) {
               <span className="text-xs text-muted-foreground">
                 {issue.category}
               </span>
+              {fixTypeInfo && (
+                <span className={cn("text-xs flex items-center gap-1", fixTypeInfo.color)}>
+                  {fixTypeInfo.icon}
+                  {fixTypeInfo.label}
+                </span>
+              )}
             </div>
             <h3 className="font-medium text-foreground">{issue.issue}</h3>
           </div>

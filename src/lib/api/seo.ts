@@ -7,6 +7,13 @@ export interface SEOIssue {
   fix: string;
   priority: 'High' | 'Medium' | 'Low';
   category: string;
+  fixType: 'manual' | 'automated' | 'semi-automated';
+}
+
+export interface BrokenLink {
+  url: string;
+  statusCode: number | null;
+  error: string | null;
 }
 
 export interface SEOMeta {
@@ -31,6 +38,8 @@ export interface SEOAnalysisResult {
     found: boolean;
     url: string | null;
     error: string | null;
+    isValid: boolean;
+    urlCount: number | null;
   };
   robotsTxt: {
     found: boolean;
@@ -42,6 +51,8 @@ export interface SEOAnalysisResult {
     hasLazyLoading: boolean;
     hasViewportMeta: boolean;
   };
+  brokenLinks: BrokenLink[];
+  gscInstructions: string[];
 }
 
 export type SEOResponse = {

@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Search, Loader2, ExternalLink } from "lucide-react";
+import { Search, Loader2, ExternalLink, ClipboardList, Link2Off, FileText } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useToast } from "@/hooks/use-toast";
@@ -158,6 +158,85 @@ export function SEOAnalyzer() {
               <p className="text-green-700 font-medium">
                 🎉 Excellent ! Aucun problème SEO majeur détecté.
               </p>
+            </div>
+          )}
+
+          {/* Broken Links Section */}
+          {result.brokenLinks && result.brokenLinks.length > 0 && (
+            <div className="space-y-4">
+              <div className="flex items-center gap-2">
+                <Link2Off className="h-5 w-5 text-red-500" />
+                <h2 className="text-xl font-semibold">
+                  Liens cassés ({result.brokenLinks.length})
+                </h2>
+              </div>
+              <div className="bg-red-50 border border-red-200 rounded-xl p-4 space-y-2">
+                {result.brokenLinks.map((link, index) => (
+                  <div key={index} className="flex items-center justify-between text-sm">
+                    <span className="text-red-700 truncate max-w-md">{link.url}</span>
+                    <span className="text-red-500 font-medium">
+                      {link.statusCode ? `Erreur ${link.statusCode}` : link.error || 'Inaccessible'}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* GSC Instructions */}
+          {result.gscInstructions && result.gscInstructions.length > 0 && (
+            <div className="space-y-4">
+              <div className="flex items-center gap-2">
+                <ClipboardList className="h-5 w-5 text-primary" />
+                <h2 className="text-xl font-semibold">
+                  Instructions Google Search Console
+                </h2>
+              </div>
+              <div className="bg-card border rounded-xl p-6 space-y-3">
+                {result.gscInstructions.map((instruction, index) => (
+                  <p key={index} className="text-sm text-foreground">
+                    {instruction}
+                  </p>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Sitemap Info */}
+          {result.sitemap.found && (
+            <div className="space-y-4">
+              <div className="flex items-center gap-2">
+                <FileText className="h-5 w-5 text-green-600" />
+                <h2 className="text-xl font-semibold">
+                  Informations Sitemap
+                </h2>
+              </div>
+              <div className="bg-green-50 border border-green-200 rounded-xl p-4">
+                <div className="flex items-center justify-between text-sm">
+                  <span className="text-green-700">URL du sitemap</span>
+                  <a 
+                    href={result.sitemap.url || '#'} 
+                    target="_blank" 
+                    rel="noopener noreferrer"
+                    className="text-green-600 hover:underline flex items-center gap-1"
+                  >
+                    {result.sitemap.url}
+                    <ExternalLink className="h-3 w-3" />
+                  </a>
+                </div>
+                {result.sitemap.urlCount !== null && (
+                  <div className="flex items-center justify-between text-sm mt-2">
+                    <span className="text-green-700">URLs dans le sitemap</span>
+                    <span className="text-green-600 font-medium">{result.sitemap.urlCount}</span>
+                  </div>
+                )}
+                <div className="flex items-center justify-between text-sm mt-2">
+                  <span className="text-green-700">Structure valide</span>
+                  <span className={`font-medium ${result.sitemap.isValid ? 'text-green-600' : 'text-red-600'}`}>
+                    {result.sitemap.isValid ? '✓ Oui' : '✗ Non'}
+                  </span>
+                </div>
+              </div>
             </div>
           )}
         </div>
