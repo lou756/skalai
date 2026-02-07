@@ -8,7 +8,7 @@ const Index = () => {
         <div className="container mx-auto px-6 py-4">
           <nav className="flex items-center justify-between">
             <div className="text-xl font-semibold text-foreground">
-              SEO Agent
+              SKAL IA
             </div>
             <div className="flex items-center gap-8">
               <a 
@@ -33,11 +33,13 @@ const Index = () => {
         {/* Hero Section */}
         <section className="text-center mb-12">
           <h1 className="text-4xl md:text-5xl font-bold tracking-tight text-foreground mb-4">
-            Analysez la visibilité SEO<br />de votre site
+            SKAL IA
           </h1>
-          <p className="text-lg text-muted-foreground max-w-2xl mx-auto">
-            Découvrez les problèmes qui empêchent votre site d'apparaître sur Google.
-            Obtenez des recommandations claires et actionnables.
+          <p className="text-xl text-muted-foreground max-w-2xl mx-auto mb-2">
+            Smart Knowledge for Analytics & Launch
+          </p>
+          <p className="text-lg text-primary font-medium max-w-2xl mx-auto">
+            Votre copilote IA pour SEO, indexation et visibilité web.
           </p>
         </section>
 
@@ -49,7 +51,7 @@ const Index = () => {
       <footer className="border-t border-border mt-auto">
         <div className="container mx-auto px-6 py-8">
           <p className="text-sm text-muted-foreground text-center">
-            SEO Agent — Analyse de visibilité Google simplifiée
+            SKAL IA — Votre copilote IA pour SEO, indexation et visibilité web.
           </p>
         </div>
       </footer>
