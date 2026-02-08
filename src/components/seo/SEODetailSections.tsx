@@ -1,5 +1,6 @@
 import { ExternalLink, BookOpen, Globe, Sparkles, TrendingUp, Link2Off, ClipboardList, FileText, ShoppingCart, DollarSign, Package, Tag, Check, X } from "lucide-react";
 import { Progress } from "@/components/ui/progress";
+import { useI18n } from "@/lib/i18n";
 import type { SEOAnalysisResult } from "@/lib/api/seo";
 
 interface SEODetailSectionsProps {
@@ -7,21 +8,23 @@ interface SEODetailSectionsProps {
 }
 
 export function SEODetailSections({ result }: SEODetailSectionsProps) {
+  const { t } = useI18n();
+
   return (
     <>
       {/* Broken Links */}
       {result.brokenLinks && result.brokenLinks.length > 0 && (
         <div className="space-y-4">
           <div className="flex items-center gap-2">
-            <Link2Off className="h-5 w-5 text-red-500" />
-            <h2 className="text-xl font-semibold">Liens cassés ({result.brokenLinks.length})</h2>
+            <Link2Off className="h-5 w-5 text-destructive" />
+            <h2 className="text-xl font-semibold">{t('detail.brokenLinks')} ({result.brokenLinks.length})</h2>
           </div>
           <div className="bg-red-50 border border-red-200 rounded-xl p-4 space-y-2">
             {result.brokenLinks.map((link, index) => (
               <div key={index} className="flex items-center justify-between text-sm">
                 <span className="text-red-700 truncate max-w-md">{link.url}</span>
                 <span className="text-red-500 font-medium">
-                  {link.statusCode ? `Erreur ${link.statusCode}` : link.error || 'Inaccessible'}
+                  {link.statusCode ? `${t('error.code')} ${link.statusCode}` : link.error || t('error.inaccessible')}
                 </span>
               </div>
             ))}
@@ -34,7 +37,7 @@ export function SEODetailSections({ result }: SEODetailSectionsProps) {
         <div className="space-y-4">
           <div className="flex items-center gap-2">
             <ClipboardList className="h-5 w-5 text-primary" />
-            <h2 className="text-xl font-semibold">Instructions Google Search Console</h2>
+            <h2 className="text-xl font-semibold">{t('detail.gscInstructions')}</h2>
           </div>
           <div className="bg-card border rounded-xl p-6 space-y-3">
             {result.gscInstructions.map((instruction, index) => (
@@ -49,11 +52,11 @@ export function SEODetailSections({ result }: SEODetailSectionsProps) {
         <div className="space-y-4">
           <div className="flex items-center gap-2">
             <FileText className="h-5 w-5 text-green-600" />
-            <h2 className="text-xl font-semibold">Informations Sitemap</h2>
+            <h2 className="text-xl font-semibold">{t('detail.sitemapInfo')}</h2>
           </div>
           <div className="bg-green-50 border border-green-200 rounded-xl p-4">
             <div className="flex items-center justify-between text-sm">
-              <span className="text-green-700">URL du sitemap</span>
+              <span className="text-green-700">{t('detail.sitemapUrl')}</span>
               <a href={result.sitemap.url || '#'} target="_blank" rel="noopener noreferrer" className="text-green-600 hover:underline flex items-center gap-1">
                 {result.sitemap.url}
                 <ExternalLink className="h-3 w-3" />
@@ -61,14 +64,14 @@ export function SEODetailSections({ result }: SEODetailSectionsProps) {
             </div>
             {result.sitemap.urlCount !== null && (
               <div className="flex items-center justify-between text-sm mt-2">
-                <span className="text-green-700">URLs dans le sitemap</span>
+                <span className="text-green-700">{t('detail.sitemapUrls')}</span>
                 <span className="text-green-600 font-medium">{result.sitemap.urlCount}</span>
               </div>
             )}
             <div className="flex items-center justify-between text-sm mt-2">
-              <span className="text-green-700">Structure valide</span>
+              <span className="text-green-700">{t('detail.sitemapValid')}</span>
               <span className={`font-medium ${result.sitemap.isValid ? 'text-green-600' : 'text-red-600'}`}>
-                {result.sitemap.isValid ? '✓ Oui' : '✗ Non'}
+                {result.sitemap.isValid ? `✓ ${t('detail.yes')}` : `✗ ${t('detail.no')}`}
               </span>
             </div>
           </div>
@@ -80,16 +83,16 @@ export function SEODetailSections({ result }: SEODetailSectionsProps) {
         <div className="space-y-4">
           <div className="flex items-center gap-2">
             <BookOpen className="h-5 w-5 text-purple-600" />
-            <h2 className="text-xl font-semibold">Analyse du contenu</h2>
+            <h2 className="text-xl font-semibold">{t('detail.contentAnalysis')}</h2>
           </div>
           <div className="bg-card border rounded-xl p-6 space-y-4">
             <div className="grid grid-cols-2 gap-4">
               <div>
-                <p className="text-sm text-muted-foreground">Nombre de mots</p>
+                <p className="text-sm text-muted-foreground">{t('detail.wordCount')}</p>
                 <p className="text-2xl font-bold">{result.contentAnalysis.wordCount}</p>
               </div>
               <div>
-                <p className="text-sm text-muted-foreground">Score de lisibilité</p>
+                <p className="text-sm text-muted-foreground">{t('detail.readability')}</p>
                 <div className="flex items-center gap-2">
                   <Progress value={result.contentAnalysis.readabilityScore} className="flex-1" />
                   <span className="text-sm font-medium">{result.contentAnalysis.readabilityScore}/100</span>
@@ -98,7 +101,7 @@ export function SEODetailSections({ result }: SEODetailSectionsProps) {
             </div>
             {result.contentAnalysis.keywordDensity.length > 0 && (
               <div>
-                <p className="text-sm font-medium text-muted-foreground mb-2">Mots-clés principaux</p>
+                <p className="text-sm font-medium text-muted-foreground mb-2">{t('detail.topKeywords')}</p>
                 <div className="flex flex-wrap gap-2">
                   {result.contentAnalysis.keywordDensity.slice(0, 6).map((kw, i) => (
                     <span key={i} className="bg-muted px-2 py-1 rounded text-sm">
@@ -110,8 +113,8 @@ export function SEODetailSections({ result }: SEODetailSectionsProps) {
             )}
             {result.contentAnalysis.duplicateContent.length > 0 && (
               <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3">
-                <p className="text-sm font-medium text-yellow-700 mb-1">⚠️ Contenu dupliqué détecté</p>
-                <p className="text-xs text-yellow-600">{result.contentAnalysis.duplicateContent.length} section(s) répétée(s)</p>
+                <p className="text-sm font-medium text-yellow-700 mb-1">{t('detail.duplicateContent')}</p>
+                <p className="text-xs text-yellow-600">{result.contentAnalysis.duplicateContent.length} {t('detail.duplicateSections')}</p>
               </div>
             )}
           </div>
@@ -123,24 +126,24 @@ export function SEODetailSections({ result }: SEODetailSectionsProps) {
         <div className="space-y-4">
           <div className="flex items-center gap-2">
             <Sparkles className="h-5 w-5 text-amber-500" />
-            <h2 className="text-xl font-semibold">Suggestions IA</h2>
+            <h2 className="text-xl font-semibold">{t('detail.aiSuggestions')}</h2>
           </div>
           <div className="bg-gradient-to-br from-amber-50 to-orange-50 border border-amber-200 rounded-xl p-6 space-y-4">
             {result.contentAnalysis.suggestions.title && (
               <div>
-                <p className="text-sm font-medium text-amber-700 mb-1">💡 Titre suggéré</p>
+                <p className="text-sm font-medium text-amber-700 mb-1">{t('detail.suggestedTitle')}</p>
                 <p className="text-foreground bg-white/50 rounded px-3 py-2 text-sm">{result.contentAnalysis.suggestions.title}</p>
               </div>
             )}
             {result.contentAnalysis.suggestions.description && (
               <div>
-                <p className="text-sm font-medium text-amber-700 mb-1">💡 Meta description suggérée</p>
+                <p className="text-sm font-medium text-amber-700 mb-1">{t('detail.suggestedDesc')}</p>
                 <p className="text-foreground bg-white/50 rounded px-3 py-2 text-sm">{result.contentAnalysis.suggestions.description}</p>
               </div>
             )}
             {result.contentAnalysis.suggestions.improvements.length > 0 && (
               <div>
-                <p className="text-sm font-medium text-amber-700 mb-2">🚀 Améliorations recommandées</p>
+                <p className="text-sm font-medium text-amber-700 mb-2">{t('detail.improvements')}</p>
                 <ul className="space-y-1">
                   {result.contentAnalysis.suggestions.improvements.map((imp, i) => (
                     <li key={i} className="text-sm text-foreground flex items-start gap-2">
@@ -160,12 +163,12 @@ export function SEODetailSections({ result }: SEODetailSectionsProps) {
         <div className="space-y-4">
           <div className="flex items-center gap-2">
             <Globe className="h-5 w-5 text-blue-600" />
-            <h2 className="text-xl font-semibold">Analyse multilingue</h2>
+            <h2 className="text-xl font-semibold">{t('detail.multilingual')}</h2>
           </div>
           <div className="bg-card border rounded-xl p-6 space-y-4">
             {result.hreflangAnalysis.detected.length > 0 && (
               <div>
-                <p className="text-sm font-medium text-muted-foreground mb-2">Versions linguistiques détectées</p>
+                <p className="text-sm font-medium text-muted-foreground mb-2">{t('detail.langVersions')}</p>
                 <div className="flex flex-wrap gap-2">
                   {result.hreflangAnalysis.detected.map((h, i) => (
                     <a key={i} href={h.url} target="_blank" rel="noopener noreferrer" className="bg-blue-50 text-blue-700 px-3 py-1 rounded-full text-sm hover:bg-blue-100 transition-colors flex items-center gap-1">
@@ -192,7 +195,7 @@ export function SEODetailSections({ result }: SEODetailSectionsProps) {
         <div className="space-y-4">
           <div className="flex items-center gap-2">
             <ShoppingCart className="h-5 w-5 text-orange-600" />
-            <h2 className="text-xl font-semibold">Analyse Google Merchant Center</h2>
+            <h2 className="text-xl font-semibold">{t('detail.merchant')}</h2>
           </div>
           
           {result.merchantAnalysis.products.length > 0 && (
@@ -204,7 +207,7 @@ export function SEODetailSections({ result }: SEODetailSectionsProps) {
                       <img src={product.image} alt={product.name || 'Product'} className="w-16 h-16 object-cover rounded-lg" />
                     )}
                     <div className="flex-1 min-w-0">
-                      <h3 className="font-medium text-foreground truncate">{product.name || 'Produit sans nom'}</h3>
+                      <h3 className="font-medium text-foreground truncate">{product.name || t('detail.noName')}</h3>
                       {product.brand && <p className="text-sm text-muted-foreground">{product.brand}</p>}
                       <div className="flex items-center gap-4 mt-2 flex-wrap">
                         {product.price && product.currency && (
@@ -216,7 +219,7 @@ export function SEODetailSections({ result }: SEODetailSectionsProps) {
                         {product.availability && (
                           <span className="flex items-center gap-1 text-sm text-muted-foreground">
                             <Package className="h-3 w-3" />
-                            {product.availability.includes('InStock') ? 'En stock' : product.availability.includes('OutOfStock') ? 'Rupture' : 'Disponibilité'}
+                            {product.availability.includes('InStock') ? t('detail.inStock') : product.availability.includes('OutOfStock') ? t('detail.outOfStock') : t('detail.availability')}
                           </span>
                         )}
                         {product.gtin && (
@@ -252,15 +255,13 @@ export function SEODetailSections({ result }: SEODetailSectionsProps) {
 
           <div className={`rounded-lg p-4 ${result.merchantAnalysis.structuredDataFound ? 'bg-green-50 border border-green-200' : 'bg-yellow-50 border border-yellow-200'}`}>
             <p className={`text-sm font-medium ${result.merchantAnalysis.structuredDataFound ? 'text-green-700' : 'text-yellow-700'}`}>
-              {result.merchantAnalysis.structuredDataFound 
-                ? '✅ Données structurées Product (JSON-LD) détectées' 
-                : '⚠️ Aucune donnée structurée Product détectée'}
+              {result.merchantAnalysis.structuredDataFound ? t('detail.structuredDataFound') : t('detail.noStructuredData')}
             </p>
           </div>
 
           {result.merchantAnalysis.feedRecommendations.length > 0 && (
             <div className="bg-card border rounded-xl p-6 space-y-2">
-              <h3 className="font-medium text-foreground mb-3">Guide Google Merchant Center</h3>
+              <h3 className="font-medium text-foreground mb-3">{t('detail.merchantGuide')}</h3>
               {result.merchantAnalysis.feedRecommendations.map((rec, i) => (
                 <p key={i} className="text-sm text-muted-foreground">{rec}</p>
               ))}
