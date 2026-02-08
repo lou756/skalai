@@ -7,6 +7,7 @@ import { I18nProvider } from "@/lib/i18n";
 import Index from "./pages/Index";
 import HowItWorks from "./pages/HowItWorks";
 import About from "./pages/About";
+import Methodology from "./pages/Methodology";
 import Legal from "./pages/Legal";
 import Privacy from "./pages/Privacy";
 import NotFound from "./pages/NotFound";
@@ -24,6 +25,7 @@ const App = () => (
             <Route path="/" element={<Index />} />
             <Route path="/how-it-works" element={<HowItWorks />} />
             <Route path="/about" element={<About />} />
+            <Route path="/methodology" element={<Methodology />} />
             <Route path="/legal" element={<Legal />} />
             <Route path="/privacy" element={<Privacy />} />
             <Route path="*" element={<NotFound />} />

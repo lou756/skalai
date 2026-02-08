@@ -98,11 +98,21 @@ export interface ConfidenceIndicator {
   detail: string;
 }
 
+export interface ScanMeta {
+  scannedAt: string;
+  durationMs: number;
+  pagesCrawled: number;
+  elementsChecked: number;
+  engine: string;
+  sources: string[];
+}
+
 export interface SEOAnalysisResult {
   url: string;
   score: number;
   scoreBreakdown: ScoreBreakdown[];
   confidence: ConfidenceIndicator[];
+  scanMeta: ScanMeta;
   issues: SEOIssue[];
   meta: SEOMeta;
   sitemap: {
