@@ -1,4 +1,5 @@
 import { Zap, HandMetal, CheckCircle2, AlertTriangle } from "lucide-react";
+import { useI18n } from "@/lib/i18n";
 import type { ActionReport } from "@/lib/api/seo";
 import { cn } from "@/lib/utils";
 
@@ -7,19 +8,20 @@ interface ActionReportSectionProps {
 }
 
 export function ActionReportSection({ report }: ActionReportSectionProps) {
+  const { t } = useI18n();
+
   if (!report) return null;
 
   return (
     <div className="space-y-6">
-      <h2 className="text-xl font-semibold">Rapport d'actions</h2>
+      <h2 className="text-xl font-semibold">{t('report.title')}</h2>
 
-      {/* Automated Actions */}
       {report.automated.length > 0 && (
         <div className="space-y-3">
           <div className="flex items-center gap-2">
             <Zap className="h-4 w-4 text-green-600" />
             <h3 className="text-sm font-medium text-green-700 uppercase tracking-wide">
-              Actions automatiques ({report.automated.length})
+              {t('report.automated')} ({report.automated.length})
             </h3>
           </div>
           <div className="bg-green-50 border border-green-200 rounded-xl divide-y divide-green-200">
@@ -39,13 +41,12 @@ export function ActionReportSection({ report }: ActionReportSectionProps) {
         </div>
       )}
 
-      {/* Manual Actions */}
       {report.manual.length > 0 && (
         <div className="space-y-3">
           <div className="flex items-center gap-2">
             <HandMetal className="h-4 w-4 text-amber-600" />
             <h3 className="text-sm font-medium text-amber-700 uppercase tracking-wide">
-              Actions manuelles requises ({report.manual.length})
+              {t('report.manual')} ({report.manual.length})
             </h3>
           </div>
           <div className="bg-card border rounded-xl divide-y divide-border">
@@ -64,7 +65,8 @@ export function ActionReportSection({ report }: ActionReportSectionProps) {
                       action.priority === 'High' ? 'bg-red-100 text-red-700' :
                       action.priority === 'Medium' ? 'bg-amber-100 text-amber-700' : 'bg-blue-100 text-blue-700'
                     )}>
-                      {action.priority === 'High' ? 'Haute' : action.priority === 'Medium' ? 'Moyenne' : 'Basse'}
+                      {action.priority === 'High' ? t('report.priorityHigh') :
+                       action.priority === 'Medium' ? t('report.priorityMedium') : t('report.priorityLow')}
                     </span>
                   </div>
                   <p className="text-xs text-muted-foreground mt-0.5">{action.instructions}</p>

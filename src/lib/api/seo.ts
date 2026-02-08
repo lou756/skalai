@@ -85,9 +85,24 @@ export interface ActionReport {
   manual: { action: string; instructions: string; priority: 'High' | 'Medium' | 'Low' }[];
 }
 
+export interface ScoreBreakdown {
+  category: string;
+  score: number;
+  maxScore: number;
+  details: string;
+}
+
+export interface ConfidenceIndicator {
+  aspect: string;
+  level: 'verified' | 'partial' | 'uncertain' | 'not_checked';
+  detail: string;
+}
+
 export interface SEOAnalysisResult {
   url: string;
   score: number;
+  scoreBreakdown: ScoreBreakdown[];
+  confidence: ConfidenceIndicator[];
   issues: SEOIssue[];
   meta: SEOMeta;
   sitemap: {

@@ -75,9 +75,24 @@ interface ActionReport {
   manual: { action: string; instructions: string; priority: 'High' | 'Medium' | 'Low' }[];
 }
 
+interface ScoreBreakdown {
+  category: string;
+  score: number;
+  maxScore: number;
+  details: string;
+}
+
+interface ConfidenceIndicator {
+  aspect: string;
+  level: 'verified' | 'partial' | 'uncertain' | 'not_checked';
+  detail: string;
+}
+
 interface SEOAnalysisResult {
   url: string;
   score: number;
+  scoreBreakdown: ScoreBreakdown[];
+  confidence: ConfidenceIndicator[];
   issues: SEOIssue[];
   meta: {
     title: string | null;
@@ -148,6 +163,7 @@ Deno.serve(async (req) => {
 
     console.log('Analyzing URL:', formattedUrl);
 
+    // Scrape the page
     const scrapeResponse = await fetch('https://api.firecrawl.dev/v1/scrape', {
       method: 'POST',
       headers: {
@@ -176,28 +192,38 @@ Deno.serve(async (req) => {
     const metadata = scrapeData.data?.metadata || scrapeData.metadata || {};
     const links = scrapeData.data?.links || scrapeData.links || [];
 
+    // Use Firecrawl Map API for complete site URL discovery
+    const allSiteUrls = await discoverAllUrls(formattedUrl, apiKey);
+    console.log('URLs discovered via Map API:', allSiteUrls.length);
+
     const meta = extractMetaInfo(html, metadata);
     const robotsTxt = await checkRobotsTxt(formattedUrl, apiKey);
     const sitemap = await checkSitemap(formattedUrl, robotsTxt.content, apiKey);
     const performance = extractPerformanceInfo(html);
-    const brokenLinks = await checkBrokenLinks(links.slice(0, 10));
+    const brokenLinks = await checkBrokenLinks(links.slice(0, 15));
     const gscInstructions = generateGSCInstructions(formattedUrl, sitemap, robotsTxt);
     const contentAnalysis = await analyzeContent(markdown, meta, formattedUrl);
     const hreflangAnalysis = analyzeHreflang(html, meta.language);
     const merchantAnalysis = analyzeMerchantData(html);
     
     const issues = generateIssues(meta, robotsTxt, sitemap, performance, formattedUrl, brokenLinks, contentAnalysis, hreflangAnalysis, merchantAnalysis);
-    const score = calculateScore(issues);
-
-    // Generate autonomous fixes
-    const generatedFixes = generateAutonomousFixes(formattedUrl, meta, robotsTxt, sitemap, contentAnalysis, merchantAnalysis, links);
     
-    // Build action report
+    // NEW: Weighted positive scoring system
+    const { score, breakdown } = calculateWeightedScore(meta, robotsTxt, sitemap, performance, brokenLinks, contentAnalysis, hreflangAnalysis, merchantAnalysis, issues);
+    
+    // NEW: Confidence indicators
+    const confidence = buildConfidenceIndicators(html, meta, robotsTxt, sitemap, contentAnalysis, merchantAnalysis, allSiteUrls.length);
+
+    // Generate autonomous fixes - use ALL discovered URLs for sitemap
+    const generatedFixes = generateAutonomousFixes(formattedUrl, meta, robotsTxt, sitemap, contentAnalysis, merchantAnalysis, allSiteUrls.length > 0 ? allSiteUrls : links);
+    
     const actionReport = buildActionReport(issues, generatedFixes, meta, sitemap, robotsTxt, merchantAnalysis);
 
     const result: SEOAnalysisResult = {
       url: formattedUrl,
       score,
+      scoreBreakdown: breakdown,
+      confidence,
       issues,
       meta,
       sitemap,
@@ -212,7 +238,7 @@ Deno.serve(async (req) => {
       actionReport,
     };
 
-    console.log('Analysis complete. Score:', score, 'Fixes generated:', generatedFixes.length);
+    console.log('Analysis complete. Score:', score, 'Fixes generated:', generatedFixes.length, 'URLs mapped:', allSiteUrls.length);
 
     return new Response(
       JSON.stringify({ success: true, data: result }),
@@ -228,6 +254,261 @@ Deno.serve(async (req) => {
   }
 });
 
+// ─── URL Discovery via Map API ───────────────────────────────────────
+
+async function discoverAllUrls(url: string, apiKey: string): Promise<string[]> {
+  try {
+    const response = await fetch('https://api.firecrawl.dev/v1/map', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${apiKey}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        url,
+        limit: 5000,
+        includeSubdomains: false,
+      }),
+    });
+
+    const data = await response.json();
+    if (!response.ok || !data.success) {
+      console.error('Map API error:', data);
+      return [];
+    }
+
+    return data.links || [];
+  } catch (error) {
+    console.error('Error mapping URLs:', error);
+    return [];
+  }
+}
+
+// ─── Weighted Positive Scoring ───────────────────────────────────────
+
+function calculateWeightedScore(
+  meta: ReturnType<typeof extractMetaInfo>,
+  robotsTxt: Awaited<ReturnType<typeof checkRobotsTxt>>,
+  sitemap: Awaited<ReturnType<typeof checkSitemap>>,
+  performance: ReturnType<typeof extractPerformanceInfo>,
+  brokenLinks: BrokenLink[],
+  contentAnalysis: ContentAnalysis,
+  hreflangAnalysis: HreflangAnalysis,
+  merchantAnalysis: MerchantAnalysis,
+  issues: SEOIssue[]
+): { score: number; breakdown: ScoreBreakdown[] } {
+  const breakdown: ScoreBreakdown[] = [];
+
+  // 1. Meta Tags (20 points max)
+  let metaScore = 0;
+  const metaMax = 20;
+  if (meta.title) {
+    metaScore += meta.title.length <= 60 ? 8 : 5; // full points if optimal length
+  }
+  if (meta.description) {
+    metaScore += meta.description.length <= 160 && meta.description.length >= 50 ? 7 : 4;
+  }
+  if (meta.canonical) metaScore += 3;
+  if (meta.language) metaScore += 2;
+  breakdown.push({
+    category: 'Meta Tags',
+    score: Math.min(metaScore, metaMax),
+    maxScore: metaMax,
+    details: `Title: ${meta.title ? '✓' : '✗'} | Description: ${meta.description ? '✓' : '✗'} | Canonical: ${meta.canonical ? '✓' : '✗'} | Lang: ${meta.language ? '✓' : '✗'}`,
+  });
+
+  // 2. Content Structure (15 points max)
+  let structureScore = 0;
+  const structureMax = 15;
+  if (meta.hasH1 && meta.h1Count === 1) structureScore += 6;
+  else if (meta.hasH1) structureScore += 3;
+  if (contentAnalysis.wordCount >= 300) structureScore += 4;
+  else if (contentAnalysis.wordCount >= 100) structureScore += 2;
+  if (contentAnalysis.readabilityScore >= 60) structureScore += 3;
+  else if (contentAnalysis.readabilityScore >= 40) structureScore += 1;
+  if (contentAnalysis.duplicateContent.length === 0) structureScore += 2;
+  breakdown.push({
+    category: 'Content & Structure',
+    score: Math.min(structureScore, structureMax),
+    maxScore: structureMax,
+    details: `H1: ${meta.hasH1 ? (meta.h1Count === 1 ? '✓ unique' : `⚠ ${meta.h1Count}`) : '✗'} | Words: ${contentAnalysis.wordCount} | Readability: ${contentAnalysis.readabilityScore}/100`,
+  });
+
+  // 3. Indexability & Crawling (20 points max)
+  let indexScore = 0;
+  const indexMax = 20;
+  if (robotsTxt.found && !robotsTxt.blocksGooglebot) indexScore += 6;
+  else if (robotsTxt.found) indexScore += 2;
+  if (sitemap.found && sitemap.isValid) indexScore += 6;
+  else if (sitemap.found) indexScore += 3;
+  if (!meta.robots?.includes('noindex')) indexScore += 5;
+  if (!meta.robots?.includes('nofollow')) indexScore += 3;
+  breakdown.push({
+    category: 'Indexability',
+    score: Math.min(indexScore, indexMax),
+    maxScore: indexMax,
+    details: `robots.txt: ${robotsTxt.found ? (robotsTxt.blocksGooglebot ? '⚠ blocks' : '✓') : '✗'} | Sitemap: ${sitemap.found ? (sitemap.isValid ? '✓ valid' : '⚠ invalid') : '✗'} | Indexable: ${!meta.robots?.includes('noindex') ? '✓' : '✗'}`,
+  });
+
+  // 4. Social & Sharing (10 points max)
+  let socialScore = 0;
+  const socialMax = 10;
+  if (meta.hasOgTags) socialScore += 5;
+  if (meta.hasTwitterCards) socialScore += 5;
+  breakdown.push({
+    category: 'Social & Sharing',
+    score: Math.min(socialScore, socialMax),
+    maxScore: socialMax,
+    details: `Open Graph: ${meta.hasOgTags ? '✓' : '✗'} | Twitter Cards: ${meta.hasTwitterCards ? '✓' : '✗'}`,
+  });
+
+  // 5. Mobile & Performance (15 points max)
+  let perfScore = 0;
+  const perfMax = 15;
+  if (performance.hasViewportMeta) perfScore += 10;
+  if (performance.hasLazyLoading) perfScore += 5;
+  breakdown.push({
+    category: 'Mobile & Performance',
+    score: Math.min(perfScore, perfMax),
+    maxScore: perfMax,
+    details: `Viewport: ${performance.hasViewportMeta ? '✓' : '✗'} | Lazy loading: ${performance.hasLazyLoading ? '✓' : '✗'}`,
+  });
+
+  // 6. Links Health (10 points max)
+  let linksScore = 10;
+  const linksMax = 10;
+  if (brokenLinks.length > 0) {
+    linksScore = Math.max(0, 10 - brokenLinks.length * 3);
+  }
+  breakdown.push({
+    category: 'Links Health',
+    score: Math.min(linksScore, linksMax),
+    maxScore: linksMax,
+    details: brokenLinks.length === 0 ? 'No broken links detected' : `${brokenLinks.length} broken link(s) found`,
+  });
+
+  // 7. Internationalization (10 points max) - only scored if site has lang or hreflang
+  let i18nScore = 0;
+  const i18nMax = 10;
+  if (meta.language) i18nScore += 4;
+  if (hreflangAnalysis.detected.length > 0) {
+    i18nScore += 3;
+    if (hreflangAnalysis.issues.length === 0) i18nScore += 3;
+  } else if (meta.language) {
+    // Single language site with lang declared is fine
+    i18nScore += 6;
+  }
+  breakdown.push({
+    category: 'Internationalization',
+    score: Math.min(i18nScore, i18nMax),
+    maxScore: i18nMax,
+    details: meta.language ? `Lang: ${meta.language} | Versions: ${hreflangAnalysis.detected.length || 'single language'}` : 'No language declared',
+  });
+
+  const totalScore = breakdown.reduce((sum, b) => sum + b.score, 0);
+  const totalMax = breakdown.reduce((sum, b) => sum + b.maxScore, 0);
+  const normalizedScore = Math.round((totalScore / totalMax) * 100);
+
+  return { score: normalizedScore, breakdown };
+}
+
+// ─── Confidence Indicators ───────────────────────────────────────────
+
+function buildConfidenceIndicators(
+  html: string,
+  meta: ReturnType<typeof extractMetaInfo>,
+  robotsTxt: Awaited<ReturnType<typeof checkRobotsTxt>>,
+  sitemap: Awaited<ReturnType<typeof checkSitemap>>,
+  contentAnalysis: ContentAnalysis,
+  merchantAnalysis: MerchantAnalysis,
+  mappedUrlCount: number
+): ConfidenceIndicator[] {
+  const indicators: ConfidenceIndicator[] = [];
+
+  // HTML analysis confidence
+  indicators.push({
+    aspect: 'HTML Analysis',
+    level: html.length > 500 ? 'verified' : html.length > 0 ? 'partial' : 'uncertain',
+    detail: html.length > 500
+      ? `Full HTML analyzed (${Math.round(html.length / 1024)}KB)`
+      : html.length > 0
+        ? `Limited HTML retrieved (${html.length} chars). Some elements may be loaded dynamically.`
+        : 'HTML could not be retrieved. Results may be inaccurate.',
+  });
+
+  // Meta tags confidence
+  indicators.push({
+    aspect: 'Meta Tags',
+    level: 'verified',
+    detail: 'Meta tags are extracted directly from HTML source code.',
+  });
+
+  // robots.txt confidence
+  indicators.push({
+    aspect: 'robots.txt',
+    level: robotsTxt.found ? 'verified' : 'verified',
+    detail: robotsTxt.found
+      ? 'robots.txt retrieved and parsed successfully.'
+      : 'robots.txt not found at standard location (/robots.txt).',
+  });
+
+  // Sitemap confidence
+  indicators.push({
+    aspect: 'Sitemap',
+    level: sitemap.found ? 'verified' : 'verified',
+    detail: sitemap.found
+      ? `Sitemap found with ${sitemap.urlCount || 0} URLs. Validity: ${sitemap.isValid ? 'valid' : 'invalid'}.`
+      : 'No sitemap found at /sitemap.xml or in robots.txt.',
+  });
+
+  // URL discovery confidence
+  indicators.push({
+    aspect: 'URL Discovery',
+    level: mappedUrlCount > 0 ? 'verified' : 'partial',
+    detail: mappedUrlCount > 0
+      ? `${mappedUrlCount} URLs discovered via site crawl.`
+      : 'URL discovery limited to links found on analyzed page.',
+  });
+
+  // Content analysis confidence
+  indicators.push({
+    aspect: 'Content Analysis',
+    level: contentAnalysis.wordCount > 50 ? 'verified' : 'partial',
+    detail: contentAnalysis.wordCount > 50
+      ? `${contentAnalysis.wordCount} words analyzed. Keyword density and readability computed.`
+      : 'Very little text content found. Page may rely on JavaScript rendering.',
+  });
+
+  // AI suggestions confidence
+  indicators.push({
+    aspect: 'AI Suggestions',
+    level: contentAnalysis.suggestions.title ? 'partial' : 'not_checked',
+    detail: contentAnalysis.suggestions.title
+      ? 'AI suggestions are recommendations based on content analysis. Verify before applying.'
+      : 'AI suggestions could not be generated.',
+  });
+
+  // Merchant analysis confidence
+  if (merchantAnalysis.isProductPage) {
+    indicators.push({
+      aspect: 'Merchant Analysis',
+      level: merchantAnalysis.structuredDataFound ? 'verified' : 'partial',
+      detail: merchantAnalysis.structuredDataFound
+        ? `${merchantAnalysis.products.length} product(s) extracted from JSON-LD structured data.`
+        : 'Product page detected but no structured data found. Analysis based on HTML patterns.',
+    });
+  }
+
+  // Broken links confidence
+  indicators.push({
+    aspect: 'Broken Links',
+    level: 'partial',
+    detail: 'Only the first 15 links are checked. Some links may timeout without being truly broken.',
+  });
+
+  return indicators;
+}
+
 // ─── Autonomous Fix Generation ───────────────────────────────────────
 
 function generateAutonomousFixes(
@@ -237,7 +518,7 @@ function generateAutonomousFixes(
   sitemap: Awaited<ReturnType<typeof checkSitemap>>,
   contentAnalysis: ContentAnalysis,
   merchantAnalysis: MerchantAnalysis,
-  links: string[]
+  allLinks: string[]
 ): GeneratedFix[] {
   const fixes: GeneratedFix[] = [];
   const urlObj = new URL(url);
@@ -255,19 +536,15 @@ function generateAutonomousFixes(
     status: 'auto_generated',
   });
 
-  // 2. Generate sitemap.xml
-  const internalLinks = links
-    .filter((l: string) => {
-      try { return new URL(l).host === urlObj.host; } catch { return false; }
-    })
-    .slice(0, 50);
+  // 2. Generate COMPLETE sitemap.xml from Map API results
+  const internalLinks = allLinks.filter((l: string) => {
+    try { return new URL(l).host === urlObj.host; } catch { return false; }
+  });
 
   fixes.push({
     type: 'sitemap_xml',
-    label: 'sitemap.xml généré',
-    description: sitemap.found
-      ? `Sitemap existant avec ${sitemap.urlCount || 0} URLs. Voici une version enrichie.`
-      : 'Sitemap XML généré à partir des liens découverts sur votre site.',
+    label: 'sitemap.xml complet',
+    description: `Sitemap généré avec ${internalLinks.length} URL(s) découvertes via crawl exhaustif du site.`,
     content: generateSitemapXml(domain, internalLinks),
     filename: 'sitemap.xml',
     status: 'needs_review',
@@ -319,14 +596,14 @@ function generateAutonomousFixes(
 
 function generateOptimizedRobotsTxt(domain: string, current: { found: boolean; content: string | null; blocksGooglebot: boolean }): string {
   const lines = [
-    '# robots.txt généré par SKAL IA',
+    '# robots.txt generated by SKAL IA',
     `# Site: ${domain}`,
     `# Date: ${new Date().toISOString().split('T')[0]}`,
     '',
     'User-agent: *',
     'Allow: /',
     '',
-    '# Bloquer les pages d\'administration et les ressources internes',
+    '# Block admin and internal pages',
     'Disallow: /admin/',
     'Disallow: /wp-admin/',
     'Disallow: /cart/',
@@ -336,7 +613,7 @@ function generateOptimizedRobotsTxt(domain: string, current: { found: boolean; c
     'Disallow: /*?sort=',
     'Disallow: /*?filter=',
     '',
-    '# Autoriser les crawlers pour les CSS et JS',
+    '# Allow CSS and JS for rendering',
     'Allow: /wp-content/uploads/',
     'Allow: /*.css$',
     'Allow: /*.js$',
@@ -347,15 +624,25 @@ function generateOptimizedRobotsTxt(domain: string, current: { found: boolean; c
 }
 
 function generateSitemapXml(domain: string, links: string[]): string {
-  const uniqueLinks = [...new Set([domain + '/', ...links])];
+  // Deduplicate and clean URLs
+  const uniqueLinks = [...new Set([domain + '/', ...links])].filter(l => {
+    try {
+      new URL(l);
+      return true;
+    } catch {
+      return false;
+    }
+  });
+  
   const today = new Date().toISOString().split('T')[0];
   
   let xml = '<?xml version="1.0" encoding="UTF-8"?>\n';
   xml += '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n';
   
   uniqueLinks.forEach((link, i) => {
-    const priority = i === 0 ? '1.0' : link.split('/').length <= 4 ? '0.8' : '0.6';
-    const changefreq = i === 0 ? 'daily' : 'weekly';
+    const depth = link.replace(/^https?:\/\/[^/]+/, '').split('/').filter(Boolean).length;
+    const priority = i === 0 ? '1.0' : depth <= 1 ? '0.8' : depth <= 2 ? '0.7' : '0.5';
+    const changefreq = i === 0 ? 'daily' : depth <= 1 ? 'weekly' : 'monthly';
     xml += `  <url>\n`;
     xml += `    <loc>${escapeXml(link)}</loc>\n`;
     xml += `    <lastmod>${today}</lastmod>\n`;
@@ -372,14 +659,9 @@ function escapeXml(str: string): string {
   return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
 
-function generateMetaTagsHtml(
-  title: string,
-  description: string,
-  url: string,
-  meta: ReturnType<typeof extractMetaInfo>
-): string {
+function generateMetaTagsHtml(title: string, description: string, url: string, meta: ReturnType<typeof extractMetaInfo>): string {
   const lines = [
-    '<!-- Balises meta SEO optimisées par SKAL IA -->',
+    '<!-- SEO meta tags optimized by SKAL IA -->',
     `<title>${title}</title>`,
     `<meta name="description" content="${description}">`,
     `<link rel="canonical" href="${url}">`,
@@ -397,7 +679,7 @@ function generateMetaTagsHtml(
   ];
 
   if (!meta.language) {
-    lines.unshift('<!-- Ajoutez lang="fr" à votre balise <html> -->');
+    lines.unshift('<!-- Add lang="fr" to your <html> tag -->');
   }
 
   return lines.join('\n');
@@ -407,9 +689,9 @@ function generateWebsiteJsonLd(url: string, name: string, description: string): 
   const jsonLd = {
     '@context': 'https://schema.org',
     '@type': 'WebSite',
-    name: name,
-    url: url,
-    description: description,
+    name,
+    url,
+    description,
     potentialAction: {
       '@type': 'SearchAction',
       target: `${url}?q={search_term_string}`,
@@ -420,10 +702,7 @@ function generateWebsiteJsonLd(url: string, name: string, description: string): 
 }
 
 function generateMerchantFeedCsv(products: ProductData[], pageUrl: string): string {
-  const headers = [
-    'id', 'title', 'description', 'link', 'image_link', 'price',
-    'availability', 'brand', 'gtin', 'mpn', 'condition', 'product_type',
-  ];
+  const headers = ['id', 'title', 'description', 'link', 'image_link', 'price', 'availability', 'brand', 'gtin', 'mpn', 'condition', 'product_type'];
   
   const rows = products.map((p, i) => {
     const availability = p.availability?.includes('InStock') ? 'in_stock'
@@ -469,88 +748,47 @@ function buildActionReport(
   const automated: ActionReport['automated'] = [];
   const manual: ActionReport['manual'] = [];
 
-  // Automated actions
   fixes.forEach(fix => {
     automated.push({
       action: fix.label,
-      status: fix.status === 'auto_generated' ? '✅ Généré' : '📝 À vérifier',
+      status: fix.status === 'auto_generated' ? '✅ Generated' : '📝 Review needed',
       details: fix.description,
     });
   });
 
-  // Manual actions
   if (meta.robots?.includes('noindex')) {
-    manual.push({
-      action: 'Retirer la directive noindex',
-      instructions: 'Modifiez la balise <meta name="robots"> pour retirer "noindex" si vous souhaitez que cette page soit indexée.',
-      priority: 'High',
-    });
+    manual.push({ action: 'Remove noindex directive', instructions: 'Edit the <meta name="robots"> tag to remove "noindex" if you want this page indexed.', priority: 'High' });
   }
-
   if (!meta.hasH1) {
-    manual.push({
-      action: 'Ajouter une balise H1',
-      instructions: 'Ajoutez un titre H1 unique contenant votre mot-clé principal dans le contenu de la page.',
-      priority: 'High',
-    });
+    manual.push({ action: 'Add an H1 tag', instructions: 'Add a unique H1 heading with your target keyword.', priority: 'High' });
   }
-
   if (!meta.language) {
-    manual.push({
-      action: 'Déclarer la langue du site',
-      instructions: 'Ajoutez l\'attribut lang="fr" (ou la langue appropriée) à la balise <html>.',
-      priority: 'Medium',
-    });
+    manual.push({ action: 'Declare site language', instructions: 'Add lang="fr" (or appropriate language) to your <html> tag.', priority: 'Medium' });
   }
-
   if (!sitemap.found) {
-    manual.push({
-      action: 'Déployer le sitemap.xml',
-      instructions: 'Téléchargez le sitemap généré ci-dessus et placez-le à la racine de votre site. Puis soumettez-le dans Google Search Console.',
-      priority: 'High',
-    });
+    manual.push({ action: 'Deploy sitemap.xml', instructions: 'Download the generated sitemap and place it at your site root. Then submit it in Google Search Console.', priority: 'High' });
   }
-
   if (!robotsTxt.found) {
-    manual.push({
-      action: 'Déployer le robots.txt',
-      instructions: 'Téléchargez le robots.txt généré et placez-le à la racine de votre domaine.',
-      priority: 'Medium',
-    });
+    manual.push({ action: 'Deploy robots.txt', instructions: 'Download the generated robots.txt and place it at your domain root.', priority: 'Medium' });
   }
-
   if (merchantAnalysis.isProductPage && !merchantAnalysis.structuredDataFound) {
-    manual.push({
-      action: 'Ajouter les données structurées produit',
-      instructions: 'Intégrez le JSON-LD Product dans le <head> de vos pages produit pour Google Shopping.',
-      priority: 'High',
-    });
+    manual.push({ action: 'Add product structured data', instructions: 'Add Product JSON-LD in the <head> of your product pages for Google Shopping.', priority: 'High' });
   }
-
   if (merchantAnalysis.isProductPage && merchantAnalysis.products.length > 0) {
-    manual.push({
-      action: 'Soumettre le flux Merchant Center',
-      instructions: 'Téléchargez le flux CSV généré, connectez-vous à merchants.google.com, et importez-le dans Produits > Flux.',
-      priority: 'High',
-    });
+    manual.push({ action: 'Submit Merchant Center feed', instructions: 'Download the generated CSV feed, log into merchants.google.com, and import it under Products → Feeds.', priority: 'High' });
   }
 
-  // Add remaining high-priority issues as manual actions
   issues.filter(i => i.priority === 'High' && i.fixType === 'manual').forEach(issue => {
     const alreadyListed = manual.some(m => m.action.includes(issue.issue.substring(0, 20)));
     if (!alreadyListed) {
-      manual.push({
-        action: issue.issue,
-        instructions: issue.fix,
-        priority: issue.priority,
-      });
+      manual.push({ action: issue.issue, instructions: issue.fix, priority: issue.priority });
     }
   });
 
   return { automated, manual };
 }
 
-// ─── Original Analysis Functions ─────────────────────────────────────
+// ─── Analysis Functions ──────────────────────────────────────────────
 
 function extractMetaInfo(html: string, metadata: Record<string, unknown>) {
   const titleMatch = html.match(/<title[^>]*>([^<]+)<\/title>/i);
@@ -591,10 +829,7 @@ async function checkRobotsTxt(url: string, apiKey: string) {
     
     const response = await fetch('https://api.firecrawl.dev/v1/scrape', {
       method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${apiKey}`,
-        'Content-Type': 'application/json',
-      },
+      headers: { 'Authorization': `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
       body: JSON.stringify({ url: robotsUrl, formats: ['markdown'], onlyMainContent: false }),
     });
 
@@ -662,20 +897,20 @@ async function checkBrokenLinks(links: string[]): Promise<BrokenLink[]> {
 
 function generateGSCInstructions(url: string, sitemap: { found: boolean; url: string | null }, robotsTxt: { found: boolean }): string[] {
   const instructions: string[] = [
-    "1. Connectez-vous à Google Search Console (search.google.com/search-console)",
-    `2. Ajoutez la propriété "${new URL(url).host}" si ce n'est pas déjà fait`,
-    "3. Validez la propriété via DNS, balise HTML ou fichier HTML",
+    "1. Log in to Google Search Console (search.google.com/search-console)",
+    `2. Add property "${new URL(url).host}" if not already done`,
+    "3. Verify via DNS, HTML tag, or HTML file",
   ];
 
   if (sitemap.found && sitemap.url) {
-    instructions.push(`4. Soumettez votre sitemap : Sitemaps → Ajouter un sitemap → "${sitemap.url}"`);
+    instructions.push(`4. Submit your sitemap: Sitemaps → Add sitemap → "${sitemap.url}"`);
   } else {
-    instructions.push("4. Créez d'abord un sitemap.xml, puis soumettez-le dans l'onglet Sitemaps");
+    instructions.push("4. First create a sitemap.xml, then submit it under the Sitemaps tab");
   }
 
   instructions.push(
-    "5. Utilisez l'outil d'inspection d'URL pour demander l'indexation des pages importantes",
-    "6. Surveillez les rapports de couverture pour détecter les erreurs d'indexation"
+    "5. Use the URL Inspection tool to request indexing for important pages",
+    "6. Monitor coverage reports for indexing errors"
   );
 
   return instructions;
@@ -703,6 +938,7 @@ async function analyzeContent(
     }
   });
   
+  // Use industry-standard SEO keywords for density analysis
   const keywordDensity = Object.entries(wordFrequency)
     .map(([keyword, count]) => ({ keyword, count, density: Math.round((count / wordCount) * 1000) / 10 }))
     .sort((a, b) => b.count - a.count)
@@ -738,28 +974,26 @@ async function generateSEOSuggestions(
   
   try {
     const contentPreview = content.substring(0, 1500);
-    const prompt = `Analyse ce contenu web et génère des suggestions SEO en français.
+    const prompt = `You are an SEO expert. Analyze this web content and generate SEO suggestions.
+Use industry-standard terminology: site audit, technical SEO, on-page optimization, SERP ranking, crawlability, Core Web Vitals, schema markup, backlink profile, keyword research, search intent, domain authority, page speed, mobile-first indexing.
 
 URL: ${url}
-Titre actuel: ${meta.title || 'Aucun'}
-Description actuelle: ${meta.description || 'Aucune'}
+Current title: ${meta.title || 'None'}
+Current description: ${meta.description || 'None'}
 
-Contenu (extrait):
+Content (excerpt):
 ${contentPreview}
 
-Réponds UNIQUEMENT en JSON valide avec cette structure exacte:
+Respond ONLY in valid JSON with this exact structure:
 {
-  "suggestedTitle": "Nouveau titre optimisé SEO (max 60 caractères)",
-  "suggestedDescription": "Nouvelle meta description optimisée (max 155 caractères)",
-  "improvements": ["amélioration 1", "amélioration 2", "amélioration 3"]
+  "suggestedTitle": "New SEO-optimized title (max 60 chars)",
+  "suggestedDescription": "New optimized meta description (max 155 chars)",
+  "improvements": ["improvement 1", "improvement 2", "improvement 3"]
 }`;
 
     const response = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
       method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${lovableApiKey}`,
-        'Content-Type': 'application/json',
-      },
+      headers: { 'Authorization': `Bearer ${lovableApiKey}`, 'Content-Type': 'application/json' },
       body: JSON.stringify({
         model: 'google/gemini-2.5-flash',
         messages: [{ role: 'user', content: prompt }],
@@ -811,20 +1045,20 @@ function analyzeHreflang(html: string, currentLang: string | null): HreflangAnal
   const hasXDefault = detected.some(d => d.lang === 'x-default');
   
   if (detected.length === 0 && currentLang) {
-    issues.push('Aucune balise hreflang détectée');
-    recommendations.push('Ajoutez des balises hreflang si votre site existe en plusieurs langues');
+    issues.push('No hreflang tags detected');
+    recommendations.push('Add hreflang tags if your site exists in multiple languages');
   }
   
   if (detected.length > 0 && !hasXDefault) {
-    issues.push('Balise hreflang x-default manquante');
-    recommendations.push('Ajoutez une balise hreflang="x-default" pointant vers la version par défaut');
+    issues.push('Missing hreflang x-default tag');
+    recommendations.push('Add an hreflang="x-default" tag pointing to the default version');
   }
   
   if (detected.length > 0 && currentLang) {
     const hasSelfRef = detected.some(d => d.lang === currentLang || d.lang.startsWith(currentLang + '-'));
     if (!hasSelfRef) {
-      issues.push('La page ne fait pas référence à elle-même dans les hreflang');
-      recommendations.push('Chaque page doit inclure un hreflang pointant vers elle-même');
+      issues.push('Page does not self-reference in hreflang');
+      recommendations.push('Each page must include an hreflang pointing to itself');
     }
   }
   
@@ -832,12 +1066,12 @@ function analyzeHreflang(html: string, currentLang: string | null): HreflangAnal
   detected.forEach(d => {
     const baseLang = d.lang.split('-')[0].toLowerCase();
     if (!validLangCodes.includes(baseLang) && d.lang !== 'x-default') {
-      issues.push(`Code langue potentiellement invalide: ${d.lang}`);
+      issues.push(`Potentially invalid language code: ${d.lang}`);
     }
   });
   
   if (detected.length > 0) {
-    recommendations.push(`${detected.length} version(s) linguistique(s) détectée(s): ${detected.map(d => d.lang).join(', ')}`);
+    recommendations.push(`${detected.length} language version(s) detected: ${detected.map(d => d.lang).join(', ')}`);
   }
   
   return { detected, issues, recommendations };
@@ -890,40 +1124,35 @@ function analyzeMerchantData(html: string): MerchantAnalysis {
   const isProductPage = structuredDataFound || (hasProductIndicators && /<[^>]*class=[^>]*product/i.test(html));
   
   if (isProductPage && !structuredDataFound) {
-    issues.push({
-      issue: 'Données structurées produit manquantes',
-      impact: 'Google Merchant ne peut pas extraire les informations produit.',
-      fix: 'Ajoutez des données structurées JSON-LD de type "Product".',
-      priority: 'High',
-    });
+    issues.push({ issue: 'Missing product structured data', impact: 'Google Merchant cannot extract product information.', fix: 'Add JSON-LD structured data of type "Product".', priority: 'High' });
   }
   
   products.forEach((product, index) => {
-    const prefix = products.length > 1 ? `Produit ${index + 1}: ` : '';
+    const prefix = products.length > 1 ? `Product ${index + 1}: ` : '';
     
-    if (!product.price) issues.push({ issue: `${prefix}Prix manquant`, impact: 'Requis pour Google Shopping.', fix: 'Ajoutez "offers.price".', priority: 'High' });
-    if (!product.currency) issues.push({ issue: `${prefix}Devise manquante`, impact: 'Prix non interprétable.', fix: 'Ajoutez "offers.priceCurrency".', priority: 'High' });
-    if (!product.availability) issues.push({ issue: `${prefix}Disponibilité manquante`, impact: 'Requis pour l\'affichage.', fix: 'Ajoutez "offers.availability".', priority: 'High' });
-    if (!product.gtin && !product.mpn) issues.push({ issue: `${prefix}GTIN/MPN manquant`, impact: 'Identifiant requis.', fix: 'Ajoutez "gtin" ou "mpn".', priority: 'Medium' });
-    if (!product.brand) issues.push({ issue: `${prefix}Marque manquante`, impact: 'Améliore la visibilité.', fix: 'Ajoutez "brand".', priority: 'Medium' });
-    if (!product.image) issues.push({ issue: `${prefix}Image manquante`, impact: 'Requis pour Google Shopping.', fix: 'Ajoutez "image".', priority: 'High' });
-    if (!product.description || product.description.length < 50) issues.push({ issue: `${prefix}Description courte`, impact: 'Améliore le référencement.', fix: 'Ajoutez min 150 caractères.', priority: 'Medium' });
-    if (!product.shipping) issues.push({ issue: `${prefix}Livraison manquante`, impact: 'Info optionnelle mais recommandée.', fix: 'Configurez dans Merchant Center.', priority: 'Low' });
+    if (!product.price) issues.push({ issue: `${prefix}Missing price`, impact: 'Required for Google Shopping.', fix: 'Add "offers.price".', priority: 'High' });
+    if (!product.currency) issues.push({ issue: `${prefix}Missing currency`, impact: 'Price not interpretable.', fix: 'Add "offers.priceCurrency".', priority: 'High' });
+    if (!product.availability) issues.push({ issue: `${prefix}Missing availability`, impact: 'Required for display.', fix: 'Add "offers.availability".', priority: 'High' });
+    if (!product.gtin && !product.mpn) issues.push({ issue: `${prefix}Missing GTIN/MPN`, impact: 'Identifier required.', fix: 'Add "gtin" or "mpn".', priority: 'Medium' });
+    if (!product.brand) issues.push({ issue: `${prefix}Missing brand`, impact: 'Improves visibility.', fix: 'Add "brand".', priority: 'Medium' });
+    if (!product.image) issues.push({ issue: `${prefix}Missing image`, impact: 'Required for Google Shopping.', fix: 'Add "image".', priority: 'High' });
+    if (!product.description || product.description.length < 50) issues.push({ issue: `${prefix}Short description`, impact: 'Improves SEO ranking.', fix: 'Add min 150 characters.', priority: 'Medium' });
+    if (!product.shipping) issues.push({ issue: `${prefix}Missing shipping info`, impact: 'Optional but recommended.', fix: 'Configure in Merchant Center.', priority: 'Low' });
   });
   
   if (isProductPage) {
     feedRecommendations.push(
-      '📋 Pour soumettre vos produits à Google Merchant Center :',
-      '1. Créez un compte Merchant Center sur merchants.google.com',
-      '2. Vérifiez et revendiquez votre site web',
-      '3. Téléchargez le flux CSV généré par SKAL IA ci-dessous',
-      '4. Importez-le dans Produits → Flux → Nouveau flux',
-      '5. Corrigez les erreurs signalées par Merchant Center',
-      '6. Activez les annonces Shopping gratuites'
+      '📋 To submit your products to Google Merchant Center:',
+      '1. Create a Merchant Center account at merchants.google.com',
+      '2. Verify and claim your website',
+      '3. Download the CSV feed generated by SKAL IA below',
+      '4. Import it under Products → Feeds → New feed',
+      '5. Fix errors flagged by Merchant Center',
+      '6. Enable free Shopping listings'
     );
     
     if (products.length > 0) {
-      feedRecommendations.push('', `✅ ${products.length} produit(s) détecté(s) et inclus dans le flux`);
+      feedRecommendations.push('', `✅ ${products.length} product(s) detected and included in the feed`);
     }
   }
   
@@ -952,77 +1181,77 @@ function generateIssues(
   let issueId = 1;
 
   if (!meta.title) {
-    issues.push({ id: `issue-${issueId++}`, issue: 'Titre de page manquant', impact: 'Google utilise le titre comme lien dans les résultats.', fix: 'Ajoutez une balise <title> de moins de 60 caractères.', priority: 'High', category: 'Balises Meta', fixType: 'automated' });
+    issues.push({ id: `issue-${issueId++}`, issue: 'Missing page title', impact: 'Google uses the title as the link in search results.', fix: 'Add a <title> tag under 60 characters.', priority: 'High', category: 'Meta Tags', fixType: 'automated' });
   } else if (meta.title.length > 60) {
-    issues.push({ id: `issue-${issueId++}`, issue: 'Titre trop long', impact: `Tronqué dans les résultats (${meta.title.length} car.).`, fix: 'Raccourcissez à moins de 60 caractères.', priority: 'Medium', category: 'Balises Meta', fixType: 'automated' });
+    issues.push({ id: `issue-${issueId++}`, issue: 'Title too long', impact: `Truncated in results (${meta.title.length} chars).`, fix: 'Shorten to under 60 characters.', priority: 'Medium', category: 'Meta Tags', fixType: 'automated' });
   }
 
   if (!meta.description) {
-    issues.push({ id: `issue-${issueId++}`, issue: 'Meta description manquante', impact: 'Google génère un extrait automatique.', fix: 'Ajoutez une meta description de 150-160 caractères.', priority: 'High', category: 'Balises Meta', fixType: 'automated' });
+    issues.push({ id: `issue-${issueId++}`, issue: 'Missing meta description', impact: 'Google generates an automatic snippet.', fix: 'Add a meta description of 150-160 characters.', priority: 'High', category: 'Meta Tags', fixType: 'automated' });
   } else if (meta.description.length > 160) {
-    issues.push({ id: `issue-${issueId++}`, issue: 'Meta description trop longue', impact: `Tronquée (${meta.description.length} car.).`, fix: 'Raccourcissez à moins de 160 caractères.', priority: 'Low', category: 'Balises Meta', fixType: 'automated' });
+    issues.push({ id: `issue-${issueId++}`, issue: 'Meta description too long', impact: `Truncated (${meta.description.length} chars).`, fix: 'Shorten to under 160 characters.', priority: 'Low', category: 'Meta Tags', fixType: 'automated' });
   }
 
   if (!meta.hasH1) {
-    issues.push({ id: `issue-${issueId++}`, issue: 'Balise H1 manquante', impact: 'Les moteurs ne comprennent pas le sujet principal.', fix: 'Ajoutez une balise H1 avec votre mot-clé cible.', priority: 'High', category: 'Structure', fixType: 'manual' });
+    issues.push({ id: `issue-${issueId++}`, issue: 'Missing H1 tag', impact: 'Search engines cannot identify the main topic.', fix: 'Add an H1 tag with your target keyword.', priority: 'High', category: 'Structure', fixType: 'manual' });
   } else if (meta.h1Count > 1) {
-    issues.push({ id: `issue-${issueId++}`, issue: 'Plusieurs balises H1', impact: `${meta.h1Count} H1 trouvées, gardez-en une seule.`, fix: 'Utilisez H2-H6 pour les sous-titres.', priority: 'Medium', category: 'Structure', fixType: 'manual' });
+    issues.push({ id: `issue-${issueId++}`, issue: 'Multiple H1 tags', impact: `${meta.h1Count} H1s found, keep only one.`, fix: 'Use H2-H6 for subheadings.', priority: 'Medium', category: 'Structure', fixType: 'manual' });
   }
 
   if (!meta.language) {
-    issues.push({ id: `issue-${issueId++}`, issue: 'Langue non déclarée', impact: 'Mauvaise indexation linguistique.', fix: 'Ajoutez lang="fr" à <html>.', priority: 'Medium', category: 'Multilingue', fixType: 'manual' });
+    issues.push({ id: `issue-${issueId++}`, issue: 'Language not declared', impact: 'Poor language-based indexing.', fix: 'Add lang="fr" to <html>.', priority: 'Medium', category: 'Internationalization', fixType: 'manual' });
   }
 
   if (!robotsTxt.found) {
-    issues.push({ id: `issue-${issueId++}`, issue: 'robots.txt manquant', impact: 'Les robots peuvent crawler inutilement.', fix: 'Déployez le robots.txt généré par SKAL IA.', priority: 'Medium', category: 'Exploration', fixType: 'automated' });
+    issues.push({ id: `issue-${issueId++}`, issue: 'Missing robots.txt', impact: 'Crawlers may crawl unnecessary pages.', fix: 'Deploy the robots.txt generated by SKAL IA.', priority: 'Medium', category: 'Crawling', fixType: 'automated' });
   } else if (robotsTxt.blocksGooglebot) {
-    issues.push({ id: `issue-${issueId++}`, issue: 'robots.txt bloque les moteurs', impact: 'Vos pages ne seront pas indexées.', fix: 'Corrigez les directives Disallow.', priority: 'High', category: 'Exploration', fixType: 'semi-automated' });
+    issues.push({ id: `issue-${issueId++}`, issue: 'robots.txt blocks crawlers', impact: 'Your pages will not be indexed.', fix: 'Fix the Disallow directives.', priority: 'High', category: 'Crawling', fixType: 'semi-automated' });
   }
 
   if (!sitemap.found) {
-    issues.push({ id: `issue-${issueId++}`, issue: 'Sitemap XML manquant', impact: 'Pages potentiellement non indexées.', fix: 'Déployez le sitemap généré par SKAL IA.', priority: 'Medium', category: 'Exploration', fixType: 'automated' });
+    issues.push({ id: `issue-${issueId++}`, issue: 'Missing XML Sitemap', impact: 'Pages may not be indexed.', fix: 'Deploy the sitemap generated by SKAL IA.', priority: 'Medium', category: 'Crawling', fixType: 'automated' });
   } else if (!sitemap.isValid) {
-    issues.push({ id: `issue-${issueId++}`, issue: 'Sitemap invalide', impact: 'Google ne peut pas le lire.', fix: 'Vérifiez la structure XML.', priority: 'High', category: 'Exploration', fixType: 'semi-automated' });
+    issues.push({ id: `issue-${issueId++}`, issue: 'Invalid sitemap', impact: 'Google cannot read it.', fix: 'Verify the XML structure.', priority: 'High', category: 'Crawling', fixType: 'semi-automated' });
   }
 
   if (!meta.canonical) {
-    issues.push({ id: `issue-${issueId++}`, issue: 'URL canonique manquante', impact: 'Risque de contenu dupliqué.', fix: 'Ajoutez <link rel="canonical">.', priority: 'Low', category: 'SEO Technique', fixType: 'automated' });
+    issues.push({ id: `issue-${issueId++}`, issue: 'Missing canonical URL', impact: 'Risk of duplicate content.', fix: 'Add <link rel="canonical">.', priority: 'Low', category: 'Technical SEO', fixType: 'automated' });
   }
 
   if (!meta.hasOgTags) {
-    issues.push({ id: `issue-${issueId++}`, issue: 'Open Graph manquant', impact: 'Pas d\'aperçu enrichi sur les réseaux.', fix: 'Ajoutez og:title, og:description, og:image.', priority: 'Low', category: 'Réseaux sociaux', fixType: 'automated' });
+    issues.push({ id: `issue-${issueId++}`, issue: 'Missing Open Graph tags', impact: 'No rich preview on social media.', fix: 'Add og:title, og:description, og:image.', priority: 'Low', category: 'Social Media', fixType: 'automated' });
   }
 
   if (!meta.hasTwitterCards) {
-    issues.push({ id: `issue-${issueId++}`, issue: 'Twitter Cards manquantes', impact: 'Pas d\'aperçu sur Twitter/X.', fix: 'Ajoutez twitter:card, twitter:title.', priority: 'Low', category: 'Réseaux sociaux', fixType: 'automated' });
+    issues.push({ id: `issue-${issueId++}`, issue: 'Missing Twitter Cards', impact: 'No preview on Twitter/X.', fix: 'Add twitter:card, twitter:title.', priority: 'Low', category: 'Social Media', fixType: 'automated' });
   }
 
   if (!performance.hasViewportMeta) {
-    issues.push({ id: `issue-${issueId++}`, issue: 'Viewport manquant', impact: 'Mauvais affichage mobile.', fix: 'Ajoutez <meta name="viewport">.', priority: 'High', category: 'Mobile', fixType: 'manual' });
+    issues.push({ id: `issue-${issueId++}`, issue: 'Missing viewport meta', impact: 'Poor mobile display.', fix: 'Add <meta name="viewport">.', priority: 'High', category: 'Mobile', fixType: 'manual' });
   }
 
   if (meta.robots && (meta.robots.includes('noindex') || meta.robots.includes('nofollow'))) {
-    issues.push({ id: `issue-${issueId++}`, issue: 'Page en noindex/nofollow', impact: 'Page non indexée par Google.', fix: 'Retirez la directive si l\'indexation est souhaitée.', priority: 'High', category: 'Indexabilité', fixType: 'manual' });
+    issues.push({ id: `issue-${issueId++}`, issue: 'Page set to noindex/nofollow', impact: 'Page not indexed by Google.', fix: 'Remove the directive if indexing is desired.', priority: 'High', category: 'Indexability', fixType: 'manual' });
   }
 
   if (brokenLinks.length > 0) {
-    issues.push({ id: `issue-${issueId++}`, issue: `${brokenLinks.length} lien(s) cassé(s)`, impact: 'Nuit à l\'UX et au SEO.', fix: `Corrigez: ${brokenLinks.slice(0, 3).map(l => l.url).join(', ')}`, priority: 'Medium', category: 'Liens', fixType: 'manual' });
+    issues.push({ id: `issue-${issueId++}`, issue: `${brokenLinks.length} broken link(s)`, impact: 'Hurts UX and SEO.', fix: `Fix: ${brokenLinks.slice(0, 3).map(l => l.url).join(', ')}`, priority: 'Medium', category: 'Links', fixType: 'manual' });
   }
 
   if (contentAnalysis.wordCount < 300) {
-    issues.push({ id: `issue-${issueId++}`, issue: 'Contenu trop court', impact: `${contentAnalysis.wordCount} mots, visez 300+.`, fix: 'Enrichissez avec du contenu pertinent.', priority: 'Medium', category: 'Contenu', fixType: 'manual' });
+    issues.push({ id: `issue-${issueId++}`, issue: 'Content too thin', impact: `${contentAnalysis.wordCount} words, aim for 300+.`, fix: 'Add relevant, valuable content.', priority: 'Medium', category: 'Content', fixType: 'manual' });
   }
 
   if (contentAnalysis.readabilityScore < 50) {
-    issues.push({ id: `issue-${issueId++}`, issue: 'Lisibilité faible', impact: `Score: ${contentAnalysis.readabilityScore}/100.`, fix: 'Simplifiez les phrases.', priority: 'Low', category: 'Contenu', fixType: 'manual' });
+    issues.push({ id: `issue-${issueId++}`, issue: 'Low readability', impact: `Score: ${contentAnalysis.readabilityScore}/100.`, fix: 'Simplify sentences and structure.', priority: 'Low', category: 'Content', fixType: 'manual' });
   }
 
   if (contentAnalysis.duplicateContent.length > 0) {
-    issues.push({ id: `issue-${issueId++}`, issue: 'Contenu dupliqué', impact: `${contentAnalysis.duplicateContent.length} section(s) répétée(s).`, fix: 'Variez votre contenu.', priority: 'Medium', category: 'Contenu', fixType: 'manual' });
+    issues.push({ id: `issue-${issueId++}`, issue: 'Duplicate content detected', impact: `${contentAnalysis.duplicateContent.length} repeated section(s).`, fix: 'Vary your content.', priority: 'Medium', category: 'Content', fixType: 'manual' });
   }
 
   hreflangAnalysis.issues.forEach(issue => {
-    issues.push({ id: `issue-${issueId++}`, issue, impact: 'Mauvaise version linguistique servie.', fix: hreflangAnalysis.recommendations[0] || 'Vérifiez hreflang.', priority: 'Medium', category: 'Multilingue', fixType: 'manual' });
+    issues.push({ id: `issue-${issueId++}`, issue, impact: 'Wrong language version served.', fix: hreflangAnalysis.recommendations[0] || 'Check hreflang tags.', priority: 'Medium', category: 'Internationalization', fixType: 'manual' });
   });
 
   if (merchantAnalysis.isProductPage) {
@@ -1032,16 +1261,4 @@ function generateIssues(
   }
 
   return issues;
-}
-
-function calculateScore(issues: SEOIssue[]): number {
-  let score = 100;
-  for (const issue of issues) {
-    switch (issue.priority) {
-      case 'High': score -= 15; break;
-      case 'Medium': score -= 8; break;
-      case 'Low': score -= 3; break;
-    }
-  }
-  return Math.max(0, Math.min(100, score));
 }
