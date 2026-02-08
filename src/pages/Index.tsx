@@ -13,7 +13,7 @@ const Index = () => {
         <HeroSection />
         <FeaturesSection />
 
-        <section id="analyzer" className="container mx-auto px-6 py-16">
+        <section id="analyzer" className="container mx-auto px-4 sm:px-6 py-10 sm:py-16">
           <SEOAnalyzer />
         </section>
       </main>
