@@ -2,10 +2,13 @@ import { Link, useLocation } from "react-router-dom";
 import { LanguageSwitcher } from "@/components/seo/LanguageSwitcher";
 import { useI18n } from "@/lib/i18n";
 import { cn } from "@/lib/utils";
+import { useState } from "react";
+import { Menu, X } from "lucide-react";
 
 export function SiteHeader() {
   const { t } = useI18n();
   const location = useLocation();
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
   const navLinks = [
     { href: "/how-it-works", label: t('nav.howItWorks') },
@@ -15,7 +18,7 @@ export function SiteHeader() {
 
   return (
     <header className="sticky top-0 z-50 border-b border-border/50 bg-background/80 backdrop-blur-xl">
-      <div className="container mx-auto px-6 py-3">
+      <div className="container mx-auto px-4 sm:px-6 py-3">
         <nav className="flex items-center justify-between">
           <Link to="/" className="flex items-center gap-2 group">
             <div className="h-8 w-8 rounded-lg gradient-bg flex items-center justify-center">
@@ -25,7 +28,9 @@ export function SiteHeader() {
               SKAL IA
             </span>
           </Link>
-          <div className="flex items-center gap-6">
+
+          {/* Desktop nav */}
+          <div className="hidden md:flex items-center gap-6">
             {navLinks.map((link) => (
               <Link
                 key={link.href}
@@ -46,7 +51,45 @@ export function SiteHeader() {
             </Link>
             <LanguageSwitcher />
           </div>
+
+          {/* Mobile controls */}
+          <div className="flex md:hidden items-center gap-3">
+            <LanguageSwitcher />
+            <button
+              onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
+              className="p-2 rounded-lg hover:bg-muted transition-colors"
+              aria-label="Menu"
+            >
+              {mobileMenuOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
+            </button>
+          </div>
         </nav>
+
+        {/* Mobile menu */}
+        {mobileMenuOpen && (
+          <div className="md:hidden border-t border-border/50 mt-3 pt-3 pb-2 space-y-1">
+            {navLinks.map((link) => (
+              <Link
+                key={link.href}
+                to={link.href}
+                onClick={() => setMobileMenuOpen(false)}
+                className={cn(
+                  "block px-3 py-2.5 rounded-lg text-sm font-medium transition-colors",
+                  location.pathname === link.href ? "text-foreground bg-muted" : "text-muted-foreground hover:bg-muted hover:text-foreground"
+                )}
+              >
+                {link.label}
+              </Link>
+            ))}
+            <Link
+              to="/#analyzer"
+              onClick={() => setMobileMenuOpen(false)}
+              className="block mx-3 mt-2 text-center text-sm font-medium gradient-bg text-primary-foreground px-4 py-2.5 rounded-lg"
+            >
+              {t('nav.analyze')}
+            </Link>
+          </div>
+        )}
       </div>
     </header>
   );
