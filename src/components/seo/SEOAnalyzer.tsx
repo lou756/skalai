@@ -12,6 +12,7 @@ import { GeneratedFixes } from "./GeneratedFixes";
 import { ActionReportSection } from "./ActionReportSection";
 import { SEODetailSections } from "./SEODetailSections";
 import { ConfidenceSection } from "./ConfidenceSection";
+import { motion } from "framer-motion";
 
 export function SEOAnalyzer() {
   const { toast } = useToast();
@@ -57,20 +58,20 @@ export function SEOAnalyzer() {
 
   return (
     <div className="w-full max-w-4xl mx-auto">
-      <form onSubmit={handleSubmit} className="mb-8">
+      <form onSubmit={handleSubmit} className="mb-10">
         <div className="flex gap-3">
           <div className="relative flex-1">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-muted-foreground" />
+            <Search className="absolute left-4 top-1/2 -translate-y-1/2 h-5 w-5 text-muted-foreground" />
             <Input
               type="text"
               value={url}
               onChange={(e) => setUrl(e.target.value)}
               placeholder={t('search.placeholder')}
-              className="pl-10 h-12 text-base"
+              className="pl-12 h-13 text-base rounded-xl border-border/60 bg-card/80 backdrop-blur-sm focus:glow-sm"
               disabled={isLoading}
             />
           </div>
-          <Button type="submit" disabled={isLoading} className="h-12 px-6">
+          <Button type="submit" disabled={isLoading} className="h-13 px-7 rounded-xl gradient-bg border-0 text-primary-foreground font-semibold">
             {isLoading ? (
               <>
                 <Loader2 className="mr-2 h-4 w-4 animate-spin" />
@@ -84,7 +85,12 @@ export function SEOAnalyzer() {
       </form>
 
       {result && (
-        <div className="space-y-8 animate-in fade-in-50 duration-500">
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.5 }}
+          className="space-y-8"
+        >
           <div className="flex items-center gap-2 text-sm text-muted-foreground">
             <span>{t('results.analyzedUrl')}</span>
             <a href={result.url} target="_blank" rel="noopener noreferrer" className="text-primary hover:underline flex items-center gap-1">
@@ -98,19 +104,19 @@ export function SEOAnalyzer() {
             <SEOChecklist result={result} />
           </div>
 
-          {/* Confidence indicators */}
           {result.confidence && <ConfidenceSection indicators={result.confidence} />}
-
           {result.actionReport && <ActionReportSection report={result.actionReport} />}
           {result.generatedFixes && <GeneratedFixes fixes={result.generatedFixes} />}
 
           {result.issues.length > 0 ? (
             <div className="space-y-6">
-              <h2 className="text-xl font-semibold">{t('results.issues')} ({result.issues.length})</h2>
+              <h2 className="text-xl font-semibold" style={{ fontFamily: "'Space Grotesk', sans-serif" }}>
+                {t('results.issues')} ({result.issues.length})
+              </h2>
 
               {highPriorityIssues.length > 0 && (
                 <div className="space-y-3">
-                  <h3 className="text-sm font-medium text-red-600 uppercase tracking-wide">
+                  <h3 className="text-sm font-medium text-destructive uppercase tracking-wide">
                     {t('results.highPriority')} ({highPriorityIssues.length})
                   </h3>
                   {highPriorityIssues.map((issue) => <SEOIssueCard key={issue.id} issue={issue} />)}
@@ -119,7 +125,7 @@ export function SEOAnalyzer() {
 
               {mediumPriorityIssues.length > 0 && (
                 <div className="space-y-3">
-                  <h3 className="text-sm font-medium text-yellow-600 uppercase tracking-wide">
+                  <h3 className="text-sm font-medium text-amber-600 uppercase tracking-wide">
                     {t('results.mediumPriority')} ({mediumPriorityIssues.length})
                   </h3>
                   {mediumPriorityIssues.map((issue) => <SEOIssueCard key={issue.id} issue={issue} />)}
@@ -128,7 +134,7 @@ export function SEOAnalyzer() {
 
               {lowPriorityIssues.length > 0 && (
                 <div className="space-y-3">
-                  <h3 className="text-sm font-medium text-blue-600 uppercase tracking-wide">
+                  <h3 className="text-sm font-medium text-primary uppercase tracking-wide">
                     {t('results.lowPriority')} ({lowPriorityIssues.length})
                   </h3>
                   {lowPriorityIssues.map((issue) => <SEOIssueCard key={issue.id} issue={issue} />)}
@@ -136,19 +142,21 @@ export function SEOAnalyzer() {
               )}
             </div>
           ) : (
-            <div className="bg-green-50 border border-green-200 rounded-xl p-6 text-center">
-              <p className="text-green-700 font-medium">{t('results.noIssues')}</p>
+            <div className="glass-card rounded-xl p-6 text-center border-primary/20">
+              <p className="text-primary font-medium">{t('results.noIssues')}</p>
             </div>
           )}
 
           <SEODetailSections result={result} />
-        </div>
+        </motion.div>
       )}
 
       {!result && !isLoading && (
-        <div className="text-center py-12 text-muted-foreground">
-          <Search className="h-12 w-12 mx-auto mb-4 opacity-30" />
-          <p className="text-lg">{t('empty.title')}</p>
+        <div className="text-center py-16 text-muted-foreground">
+          <div className="h-16 w-16 rounded-2xl bg-muted/50 flex items-center justify-center mx-auto mb-4">
+            <Search className="h-8 w-8 opacity-30" />
+          </div>
+          <p className="text-lg font-medium text-foreground/60">{t('empty.title')}</p>
           <p className="text-sm mt-2">{t('empty.subtitle')}</p>
         </div>
       )}

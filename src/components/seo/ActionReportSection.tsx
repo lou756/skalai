@@ -14,26 +14,26 @@ export function ActionReportSection({ report }: ActionReportSectionProps) {
 
   return (
     <div className="space-y-6">
-      <h2 className="text-xl font-semibold">{t('report.title')}</h2>
+      <h2 className="text-xl font-semibold" style={{ fontFamily: "'Space Grotesk', sans-serif" }}>{t('report.title')}</h2>
 
       {report.automated.length > 0 && (
         <div className="space-y-3">
           <div className="flex items-center gap-2">
-            <Zap className="h-4 w-4 text-green-600" />
-            <h3 className="text-sm font-medium text-green-700 uppercase tracking-wide">
+            <Zap className="h-4 w-4 text-emerald-500" />
+            <h3 className="text-sm font-medium text-emerald-600 uppercase tracking-wide">
               {t('report.automated')} ({report.automated.length})
             </h3>
           </div>
-          <div className="bg-green-50 border border-green-200 rounded-xl divide-y divide-green-200">
+          <div className="glass-card rounded-xl divide-y divide-border/30 border-emerald-500/20">
             {report.automated.map((action, i) => (
               <div key={i} className="p-3 flex items-start gap-3">
-                <CheckCircle2 className="h-4 w-4 text-green-600 shrink-0 mt-0.5" />
+                <CheckCircle2 className="h-4 w-4 text-emerald-500 shrink-0 mt-0.5" />
                 <div className="min-w-0">
                   <div className="flex items-center gap-2 flex-wrap">
-                    <span className="font-medium text-sm text-green-800">{action.action}</span>
-                    <span className="text-xs text-green-600">{action.status}</span>
+                    <span className="font-medium text-sm text-foreground">{action.action}</span>
+                    <span className="text-xs text-emerald-600">{action.status}</span>
                   </div>
-                  <p className="text-xs text-green-700 mt-0.5">{action.details}</p>
+                  <p className="text-xs text-muted-foreground mt-0.5">{action.details}</p>
                 </div>
               </div>
             ))}
@@ -44,26 +44,26 @@ export function ActionReportSection({ report }: ActionReportSectionProps) {
       {report.manual.length > 0 && (
         <div className="space-y-3">
           <div className="flex items-center gap-2">
-            <HandMetal className="h-4 w-4 text-amber-600" />
-            <h3 className="text-sm font-medium text-amber-700 uppercase tracking-wide">
+            <HandMetal className="h-4 w-4 text-amber-500" />
+            <h3 className="text-sm font-medium text-amber-600 uppercase tracking-wide">
               {t('report.manual')} ({report.manual.length})
             </h3>
           </div>
-          <div className="bg-card border rounded-xl divide-y divide-border">
+          <div className="glass-card rounded-xl divide-y divide-border/30">
             {report.manual.map((action, i) => (
               <div key={i} className="p-3 flex items-start gap-3">
                 <AlertTriangle className={cn(
                   "h-4 w-4 shrink-0 mt-0.5",
-                  action.priority === 'High' ? 'text-red-500' :
-                  action.priority === 'Medium' ? 'text-amber-500' : 'text-blue-500'
+                  action.priority === 'High' ? 'text-destructive' :
+                  action.priority === 'Medium' ? 'text-amber-500' : 'text-primary'
                 )} />
                 <div className="min-w-0">
                   <div className="flex items-center gap-2 flex-wrap">
                     <span className="font-medium text-sm text-foreground">{action.action}</span>
                     <span className={cn(
                       "text-xs px-1.5 py-0.5 rounded",
-                      action.priority === 'High' ? 'bg-red-100 text-red-700' :
-                      action.priority === 'Medium' ? 'bg-amber-100 text-amber-700' : 'bg-blue-100 text-blue-700'
+                      action.priority === 'High' ? 'bg-destructive/10 text-destructive' :
+                      action.priority === 'Medium' ? 'bg-amber-500/10 text-amber-600' : 'bg-primary/10 text-primary'
                     )}>
                       {action.priority === 'High' ? t('report.priorityHigh') :
                        action.priority === 'Medium' ? t('report.priorityMedium') : t('report.priorityLow')}

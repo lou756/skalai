@@ -28,26 +28,26 @@ export function SEOChecklist({ result }: SEOChecklistProps) {
   const passedCount = checks.filter(c => c.passed).length;
 
   return (
-    <div className="bg-card rounded-xl border p-6">
+    <div className="glass-card rounded-xl p-6">
       <div className="flex items-center justify-between mb-4">
-        <h2 className="text-lg font-semibold">{t('checklist.title')}</h2>
+        <h2 className="text-lg font-semibold" style={{ fontFamily: "'Space Grotesk', sans-serif" }}>{t('checklist.title')}</h2>
         <span className="text-sm text-muted-foreground">
           {passedCount}/{checks.length} {t('checklist.validated')}
         </span>
       </div>
-      <div className="space-y-2">
+      <div className="space-y-1.5">
         {checks.map((check, index) => (
-          <div key={index} className="flex items-center gap-3 py-2 border-b border-border/50 last:border-0">
+          <div key={index} className="flex items-center gap-3 py-1.5 border-b border-border/30 last:border-0">
             {check.passed ? (
-              <div className="h-5 w-5 rounded-full bg-green-100 flex items-center justify-center">
-                <Check className="h-3 w-3 text-green-600" />
+              <div className="h-5 w-5 rounded-full bg-emerald-500/10 flex items-center justify-center">
+                <Check className="h-3 w-3 text-emerald-500" />
               </div>
             ) : (
-              <div className="h-5 w-5 rounded-full bg-red-100 flex items-center justify-center">
-                <X className="h-3 w-3 text-red-600" />
+              <div className="h-5 w-5 rounded-full bg-destructive/10 flex items-center justify-center">
+                <X className="h-3 w-3 text-destructive" />
               </div>
             )}
-            <span className={check.passed ? "text-foreground" : "text-muted-foreground"}>
+            <span className={`text-sm ${check.passed ? "text-foreground" : "text-muted-foreground"}`}>
               {check.label}
             </span>
           </div>
