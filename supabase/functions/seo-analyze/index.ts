@@ -88,11 +88,21 @@ interface ConfidenceIndicator {
   detail: string;
 }
 
+interface ScanMeta {
+  scannedAt: string;
+  durationMs: number;
+  pagesCrawled: number;
+  elementsChecked: number;
+  engine: string;
+  sources: string[];
+}
+
 interface SEOAnalysisResult {
   url: string;
   score: number;
   scoreBreakdown: ScoreBreakdown[];
   confidence: ConfidenceIndicator[];
+  scanMeta: ScanMeta;
   issues: SEOIssue[];
   meta: {
     title: string | null;
@@ -162,6 +172,7 @@ Deno.serve(async (req) => {
     }
 
     console.log('Analyzing URL:', formattedUrl);
+    const startTime = Date.now();
 
     // Scrape the page
     const scrapeResponse = await fetch('https://api.firecrawl.dev/v1/scrape', {
@@ -219,11 +230,37 @@ Deno.serve(async (req) => {
     
     const actionReport = buildActionReport(issues, generatedFixes, meta, sitemap, robotsTxt, merchantAnalysis);
 
+    const durationMs = Date.now() - startTime;
+
+    // Count elements checked
+    const elementsChecked = 
+      13 + // meta checks (title, desc, canonical, robots, lang, h1, og, twitter, viewport, lazy, etc.)
+      (brokenLinks.length > 0 ? links.slice(0, 15).length : links.slice(0, 15).length) + // links checked
+      (contentAnalysis.keywordDensity.length) + // keywords analyzed
+      (merchantAnalysis.products.length * 12) + // product fields per product
+      (allSiteUrls.length > 0 ? 1 : 0) + // URL discovery
+      2; // robots.txt + sitemap
+
+    const scanMeta: ScanMeta = {
+      scannedAt: new Date().toISOString(),
+      durationMs,
+      pagesCrawled: allSiteUrls.length || 1,
+      elementsChecked,
+      engine: 'SKAL IA v2.0',
+      sources: [
+        'Firecrawl Web Scraping API',
+        'Firecrawl Map API (URL discovery)',
+        'Direct HTTP requests (robots.txt, sitemap, broken links)',
+        'Lovable AI Gateway (Gemini - content suggestions)',
+      ],
+    };
+
     const result: SEOAnalysisResult = {
       url: formattedUrl,
       score,
       scoreBreakdown: breakdown,
       confidence,
+      scanMeta,
       issues,
       meta,
       sitemap,
@@ -238,7 +275,7 @@ Deno.serve(async (req) => {
       actionReport,
     };
 
-    console.log('Analysis complete. Score:', score, 'Fixes generated:', generatedFixes.length, 'URLs mapped:', allSiteUrls.length);
+    console.log('Analysis complete. Score:', score, 'Duration:', durationMs, 'ms, Fixes:', generatedFixes.length, 'URLs:', allSiteUrls.length);
 
     return new Response(
       JSON.stringify({ success: true, data: result }),

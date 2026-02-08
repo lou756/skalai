@@ -12,6 +12,8 @@ import { GeneratedFixes } from "./GeneratedFixes";
 import { ActionReportSection } from "./ActionReportSection";
 import { SEODetailSections } from "./SEODetailSections";
 import { ConfidenceSection } from "./ConfidenceSection";
+import { ScanMetaBanner } from "./ScanMetaBanner";
+import { ScanProgressAnimation } from "./ScanProgressAnimation";
 import { motion } from "framer-motion";
 
 export function SEOAnalyzer() {
@@ -21,10 +23,8 @@ export function SEOAnalyzer() {
   const [isLoading, setIsLoading] = useState(false);
   const [result, setResult] = useState<SEOAnalysisResult | null>(null);
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    
-    if (!url.trim()) {
+  const runAnalysis = async (targetUrl: string) => {
+    if (!targetUrl.trim()) {
       toast({ title: t('search.urlRequired'), description: t('search.urlRequiredDesc'), variant: "destructive" });
       return;
     }
@@ -33,7 +33,7 @@ export function SEOAnalyzer() {
     setResult(null);
 
     try {
-      const response = await analyzeSEO(url);
+      const response = await analyzeSEO(targetUrl);
 
       if (response.success && response.data) {
         setResult(response.data);
@@ -49,6 +49,17 @@ export function SEOAnalyzer() {
       toast({ title: t('search.genericError'), description: t('search.genericErrorDesc'), variant: "destructive" });
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    await runAnalysis(url);
+  };
+
+  const handleRescan = () => {
+    if (result?.url) {
+      runAnalysis(result.url);
     }
   };
 
@@ -84,6 +95,8 @@ export function SEOAnalyzer() {
         </div>
       </form>
 
+      <ScanProgressAnimation isLoading={isLoading} />
+
       {result && (
         <motion.div
           initial={{ opacity: 0, y: 20 }}
@@ -91,6 +104,15 @@ export function SEOAnalyzer() {
           transition={{ duration: 0.5 }}
           className="space-y-8"
         >
+          {result.scanMeta && (
+            <ScanMetaBanner
+              scanMeta={result.scanMeta}
+              rawData={result}
+              onRescan={handleRescan}
+              isRescanning={isLoading}
+            />
+          )}
+
           <div className="flex items-center gap-2 text-sm text-muted-foreground">
             <span>{t('results.analyzedUrl')}</span>
             <a href={result.url} target="_blank" rel="noopener noreferrer" className="text-primary hover:underline flex items-center gap-1">
