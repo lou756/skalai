@@ -11,10 +11,10 @@ export function SEOScoreCard({ score, breakdown }: SEOScoreCardProps) {
   const { t } = useI18n();
 
   const getScoreColor = () => {
-    if (score >= 80) return "text-green-600";
-    if (score >= 60) return "text-yellow-600";
+    if (score >= 80) return "text-emerald-500";
+    if (score >= 60) return "text-amber-500";
     if (score >= 40) return "text-orange-500";
-    return "text-red-600";
+    return "text-destructive";
   };
 
   const getScoreLabel = () => {
@@ -24,20 +24,34 @@ export function SEOScoreCard({ score, breakdown }: SEOScoreCardProps) {
     return t('score.critical');
   };
 
-  const getScoreBg = () => {
-    if (score >= 80) return "bg-green-50 border-green-200";
-    if (score >= 60) return "bg-yellow-50 border-yellow-200";
-    if (score >= 40) return "bg-orange-50 border-orange-200";
-    return "bg-red-50 border-red-200";
+  const getProgressColor = (pct: number) => {
+    if (pct >= 80) return "bg-emerald-500";
+    if (pct >= 50) return "bg-amber-500";
+    return "bg-destructive";
   };
 
   return (
-    <div className={cn("rounded-xl border-2 p-6", getScoreBg())}>
+    <div className="glass-card rounded-xl p-6">
       <div className="text-center">
-        <p className="text-sm text-muted-foreground mb-2">{t('score.title')}</p>
-        <div className={cn("text-6xl font-bold", getScoreColor())}>{score}</div>
-        <p className="text-sm text-muted-foreground mt-1">/100</p>
-        <p className={cn("text-lg font-medium mt-2", getScoreColor())}>{getScoreLabel()}</p>
+        <p className="text-sm text-muted-foreground mb-3">{t('score.title')}</p>
+        <div className="relative inline-flex items-center justify-center">
+          <svg className="w-28 h-28 -rotate-90" viewBox="0 0 120 120">
+            <circle cx="60" cy="60" r="52" fill="none" stroke="hsl(var(--muted))" strokeWidth="8" />
+            <circle
+              cx="60" cy="60" r="52" fill="none"
+              stroke="currentColor"
+              strokeWidth="8"
+              strokeLinecap="round"
+              strokeDasharray={`${(score / 100) * 327} 327`}
+              className={getScoreColor()}
+            />
+          </svg>
+          <div className="absolute inset-0 flex flex-col items-center justify-center">
+            <span className={cn("text-3xl font-bold", getScoreColor())} style={{ fontFamily: "'Space Grotesk', sans-serif" }}>{score}</span>
+            <span className="text-xs text-muted-foreground">/100</span>
+          </div>
+        </div>
+        <p className={cn("text-sm font-semibold mt-2", getScoreColor())}>{getScoreLabel()}</p>
       </div>
 
       {breakdown && breakdown.length > 0 && (
@@ -45,21 +59,18 @@ export function SEOScoreCard({ score, breakdown }: SEOScoreCardProps) {
           <p className="text-xs font-medium text-muted-foreground mb-3 uppercase tracking-wide">
             {t('score.breakdown')}
           </p>
-          <div className="space-y-2">
+          <div className="space-y-2.5">
             {breakdown.map((b, i) => {
               const pct = Math.round((b.score / b.maxScore) * 100);
               return (
                 <div key={i}>
-                  <div className="flex items-center justify-between text-xs mb-0.5">
+                  <div className="flex items-center justify-between text-xs mb-1">
                     <span className="text-foreground font-medium">{b.category}</span>
                     <span className="text-muted-foreground">{b.score}/{b.maxScore}</span>
                   </div>
                   <div className="h-1.5 bg-muted rounded-full overflow-hidden">
                     <div
-                      className={cn(
-                        "h-full rounded-full transition-all",
-                        pct >= 80 ? "bg-green-500" : pct >= 50 ? "bg-yellow-500" : "bg-red-500"
-                      )}
+                      className={cn("h-full rounded-full transition-all duration-700", getProgressColor(pct))}
                       style={{ width: `${pct}%` }}
                     />
                   </div>
