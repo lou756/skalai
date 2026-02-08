@@ -71,6 +71,20 @@ export interface MerchantAnalysis {
   feedRecommendations: string[];
 }
 
+export interface GeneratedFix {
+  type: 'robots_txt' | 'sitemap_xml' | 'meta_tags' | 'merchant_feed' | 'structured_data';
+  label: string;
+  description: string;
+  content: string;
+  filename: string;
+  status: 'auto_generated' | 'needs_review';
+}
+
+export interface ActionReport {
+  automated: { action: string; status: string; details: string }[];
+  manual: { action: string; instructions: string; priority: 'High' | 'Medium' | 'Low' }[];
+}
+
 export interface SEOAnalysisResult {
   url: string;
   score: number;
@@ -98,6 +112,8 @@ export interface SEOAnalysisResult {
   contentAnalysis: ContentAnalysis;
   hreflangAnalysis: HreflangAnalysis;
   merchantAnalysis: MerchantAnalysis;
+  generatedFixes: GeneratedFix[];
+  actionReport: ActionReport;
 }
 
 export type SEOResponse = {
