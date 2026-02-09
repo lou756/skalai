@@ -14,7 +14,45 @@ export type Database = {
   }
   public: {
     Tables: {
-      [_ in never]: never
+      scan_history: {
+        Row: {
+          created_at: string
+          elements_checked: number | null
+          fixes_count: number
+          id: string
+          issues_count: number
+          pages_crawled: number | null
+          result_data: Json
+          scan_duration_ms: number | null
+          score: number
+          url: string
+        }
+        Insert: {
+          created_at?: string
+          elements_checked?: number | null
+          fixes_count?: number
+          id?: string
+          issues_count?: number
+          pages_crawled?: number | null
+          result_data: Json
+          scan_duration_ms?: number | null
+          score: number
+          url: string
+        }
+        Update: {
+          created_at?: string
+          elements_checked?: number | null
+          fixes_count?: number
+          id?: string
+          issues_count?: number
+          pages_crawled?: number | null
+          result_data?: Json
+          scan_duration_ms?: number | null
+          score?: number
+          url?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
