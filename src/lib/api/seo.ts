@@ -107,6 +107,20 @@ export interface ScanMeta {
   sources: string[];
 }
 
+export interface PageSpeedResult {
+  performanceScore: number | null;
+  lcp: { value: number | null; rating: string | null };
+  fid: { value: number | null; rating: string | null };
+  cls: { value: number | null; rating: string | null };
+  fcp: { value: number | null; rating: string | null };
+  si: { value: number | null; rating: string | null };
+  tbt: { value: number | null; rating: string | null };
+  ttfb: { value: number | null; rating: string | null };
+  diagnostics: { title: string; description: string; score: number | null }[];
+  fetchedAt: string | null;
+  error: string | null;
+}
+
 export interface SEOAnalysisResult {
   url: string;
   score: number;
@@ -132,6 +146,7 @@ export interface SEOAnalysisResult {
     hasLazyLoading: boolean;
     hasViewportMeta: boolean;
   };
+  pageSpeed: PageSpeedResult | null;
   brokenLinks: BrokenLink[];
   gscInstructions: string[];
   contentAnalysis: ContentAnalysis;

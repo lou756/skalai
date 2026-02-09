@@ -97,6 +97,20 @@ interface ScanMeta {
   sources: string[];
 }
 
+interface PageSpeedResult {
+  performanceScore: number | null;
+  lcp: { value: number | null; rating: string | null };
+  fid: { value: number | null; rating: string | null };
+  cls: { value: number | null; rating: string | null };
+  fcp: { value: number | null; rating: string | null };
+  si: { value: number | null; rating: string | null };
+  tbt: { value: number | null; rating: string | null };
+  ttfb: { value: number | null; rating: string | null };
+  diagnostics: { title: string; description: string; score: number | null }[];
+  fetchedAt: string | null;
+  error: string | null;
+}
+
 interface SEOAnalysisResult {
   url: string;
   score: number;
@@ -133,6 +147,7 @@ interface SEOAnalysisResult {
     hasLazyLoading: boolean;
     hasViewportMeta: boolean;
   };
+  pageSpeed: PageSpeedResult | null;
   brokenLinks: BrokenLink[];
   gscInstructions: string[];
   contentAnalysis: ContentAnalysis;
@@ -208,7 +223,12 @@ Deno.serve(async (req) => {
     console.log('URLs discovered via Map API:', allSiteUrls.length);
 
     const meta = extractMetaInfo(html, metadata);
-    const robotsTxt = await checkRobotsTxt(formattedUrl, apiKey);
+    
+    // Run parallel fetches
+    const [robotsTxt, pageSpeed] = await Promise.all([
+      checkRobotsTxt(formattedUrl, apiKey),
+      fetchPageSpeedInsights(formattedUrl),
+    ]);
     const sitemap = await checkSitemap(formattedUrl, robotsTxt.content, apiKey);
     const performance = extractPerformanceInfo(html);
     const brokenLinks = await checkBrokenLinks(links.slice(0, 15));
@@ -250,6 +270,7 @@ Deno.serve(async (req) => {
       sources: [
         'Firecrawl Web Scraping API',
         'Firecrawl Map API (URL discovery)',
+        'Google PageSpeed Insights API (Core Web Vitals)',
         'Direct HTTP requests (robots.txt, sitemap, broken links)',
         'Lovable AI Gateway (Gemini - content suggestions)',
       ],
@@ -266,6 +287,7 @@ Deno.serve(async (req) => {
       sitemap,
       robotsTxt,
       performance,
+      pageSpeed,
       brokenLinks,
       gscInstructions,
       contentAnalysis,
@@ -1298,4 +1320,62 @@ function generateIssues(
   }
 
   return issues;
+}
+
+// ─── Google PageSpeed Insights API ───────────────────────────────────
+
+async function fetchPageSpeedInsights(url: string): Promise<PageSpeedResult> {
+  try {
+    console.log('Fetching PageSpeed Insights for:', url);
+    const apiUrl = `https://www.googleapis.com/pagespeedonline/v5/runPagespeed?url=${encodeURIComponent(url)}&category=performance&strategy=mobile`;
+    
+    const response = await fetch(apiUrl, { signal: AbortSignal.timeout(30000) });
+    
+    if (!response.ok) {
+      console.error('PSI API error:', response.status);
+      return { performanceScore: null, lcp: { value: null, rating: null }, fid: { value: null, rating: null }, cls: { value: null, rating: null }, fcp: { value: null, rating: null }, si: { value: null, rating: null }, tbt: { value: null, rating: null }, ttfb: { value: null, rating: null }, diagnostics: [], fetchedAt: null, error: `API returned ${response.status}` };
+    }
+
+    const data = await response.json();
+    const lighthouse = data.lighthouseResult;
+    if (!lighthouse) {
+      return { performanceScore: null, lcp: { value: null, rating: null }, fid: { value: null, rating: null }, cls: { value: null, rating: null }, fcp: { value: null, rating: null }, si: { value: null, rating: null }, tbt: { value: null, rating: null }, ttfb: { value: null, rating: null }, diagnostics: [], fetchedAt: null, error: 'No Lighthouse data' };
+    }
+
+    const audits = lighthouse.audits || {};
+    const categories = lighthouse.categories || {};
+    const perfScore = categories.performance?.score != null ? Math.round(categories.performance.score * 100) : null;
+
+    const getMetric = (key: string) => {
+      const audit = audits[key];
+      if (!audit) return { value: null, rating: null };
+      return { value: audit.numericValue ?? null, rating: audit.score != null ? (audit.score >= 0.9 ? 'good' : audit.score >= 0.5 ? 'needs-improvement' : 'poor') : null };
+    };
+
+    // Extract top diagnostics (opportunities & diagnostics)
+    const diagnosticAudits = Object.values(audits)
+      .filter((a: any) => a.details?.type === 'opportunity' || (a.score !== null && a.score < 0.9 && a.details))
+      .slice(0, 8)
+      .map((a: any) => ({ title: a.title || '', description: (a.description || '').replace(/\\[.*?\\]\\(.*?\\)/g, '').substring(0, 200), score: a.score ?? null }));
+
+    const result: PageSpeedResult = {
+      performanceScore: perfScore,
+      lcp: getMetric('largest-contentful-paint'),
+      fid: getMetric('max-potential-fid'),
+      cls: getMetric('cumulative-layout-shift'),
+      fcp: getMetric('first-contentful-paint'),
+      si: getMetric('speed-index'),
+      tbt: getMetric('total-blocking-time'),
+      ttfb: getMetric('server-response-time'),
+      diagnostics: diagnosticAudits,
+      fetchedAt: new Date().toISOString(),
+      error: null,
+    };
+
+    console.log('PSI score:', perfScore);
+    return result;
+  } catch (error) {
+    console.error('PageSpeed Insights error:', error);
+    return { performanceScore: null, lcp: { value: null, rating: null }, fid: { value: null, rating: null }, cls: { value: null, rating: null }, fcp: { value: null, rating: null }, si: { value: null, rating: null }, tbt: { value: null, rating: null }, ttfb: { value: null, rating: null }, diagnostics: [], fetchedAt: null, error: error instanceof Error ? error.message : 'Unknown error' };
+  }
 }
