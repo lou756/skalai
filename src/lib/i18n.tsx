@@ -171,6 +171,12 @@ const translations = {
     'footer.privacy': 'Confidentialité',
     'footer.terms': 'CGU',
     'footer.copyright': '© 2025 SKAL IA. Tous droits réservés.',
+    // History
+    'history.title': 'Historique des analyses',
+    'history.empty': 'Aucune analyse enregistrée pour le moment.',
+    'history.recent': '10 dernières',
+    // PDF
+    'pdf.export': 'Exporter en PDF',
     // Errors
     'error.inaccessible': 'Inaccessible',
     'error.code': 'Erreur',
@@ -410,6 +416,12 @@ const translations = {
     'method.cert.noSimulation': 'No Simulation',
     'method.cert.transparent': 'Sources Cited',
     'method.cert.gdpr': 'GDPR Compliant',
+    // History
+    'history.title': 'Scan History',
+    'history.empty': 'No scans recorded yet.',
+    'history.recent': 'Last 10',
+    // PDF
+    'pdf.export': 'Export PDF',
   },
 } as const;
 

@@ -1,10 +1,12 @@
 import { useState } from "react";
-import { Search, Loader2, ExternalLink } from "lucide-react";
+import { Search, Loader2, ExternalLink, FileText } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useToast } from "@/hooks/use-toast";
 import { useI18n } from "@/lib/i18n";
 import { analyzeSEO, type SEOAnalysisResult } from "@/lib/api/seo";
+import { saveAnalysis } from "@/lib/api/history";
+import { generatePDFReport } from "@/lib/api/pdf-export";
 import { SEOScoreCard } from "./SEOScoreCard";
 import { SEOIssueCard } from "./SEOIssueCard";
 import { SEOChecklist } from "./SEOChecklist";
@@ -14,6 +16,7 @@ import { SEODetailSections } from "./SEODetailSections";
 import { ConfidenceSection } from "./ConfidenceSection";
 import { ScanMetaBanner } from "./ScanMetaBanner";
 import { ScanProgressAnimation } from "./ScanProgressAnimation";
+import { ScanHistoryPanel } from "./ScanHistoryPanel";
 import { motion } from "framer-motion";
 
 export function SEOAnalyzer() {
@@ -22,6 +25,7 @@ export function SEOAnalyzer() {
   const [url, setUrl] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [result, setResult] = useState<SEOAnalysisResult | null>(null);
+  const [historyKey, setHistoryKey] = useState(0);
 
   const runAnalysis = async (targetUrl: string) => {
     if (!targetUrl.trim()) {
@@ -37,6 +41,9 @@ export function SEOAnalyzer() {
 
       if (response.success && response.data) {
         setResult(response.data);
+        // Save to history
+        await saveAnalysis(response.data);
+        setHistoryKey(prev => prev + 1);
         toast({
           title: t('search.complete'),
           description: t('search.scoreResult', { score: response.data.score, fixes: response.data.generatedFixes?.length || 0 }),
@@ -60,6 +67,12 @@ export function SEOAnalyzer() {
   const handleRescan = () => {
     if (result?.url) {
       runAnalysis(result.url);
+    }
+  };
+
+  const handleExportPDF = () => {
+    if (result) {
+      generatePDFReport(result);
     }
   };
 
@@ -113,12 +126,18 @@ export function SEOAnalyzer() {
             />
           )}
 
-          <div className="flex items-center gap-2 text-xs sm:text-sm text-muted-foreground flex-wrap">
-            <span>{t('results.analyzedUrl')}</span>
-            <a href={result.url} target="_blank" rel="noopener noreferrer" className="text-primary hover:underline flex items-center gap-1 break-all">
-              {result.url}
-              <ExternalLink className="h-3 w-3 shrink-0" />
-            </a>
+          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2">
+            <div className="flex items-center gap-2 text-xs sm:text-sm text-muted-foreground flex-wrap">
+              <span>{t('results.analyzedUrl')}</span>
+              <a href={result.url} target="_blank" rel="noopener noreferrer" className="text-primary hover:underline flex items-center gap-1 break-all">
+                {result.url}
+                <ExternalLink className="h-3 w-3 shrink-0" />
+              </a>
+            </div>
+            <Button variant="outline" size="sm" onClick={handleExportPDF} className="text-xs gap-1.5 shrink-0">
+              <FileText className="h-3 w-3" />
+              {t('pdf.export')}
+            </Button>
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-6">
@@ -172,6 +191,11 @@ export function SEOAnalyzer() {
           <SEODetailSections result={result} />
         </motion.div>
       )}
+
+      {/* History panel - always visible */}
+      <div className="mt-8 sm:mt-12">
+        <ScanHistoryPanel key={historyKey} currentUrl={result?.url} />
+      </div>
 
       {!result && !isLoading && (
         <div className="text-center py-12 sm:py-16 text-muted-foreground">
