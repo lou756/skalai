@@ -15,6 +15,7 @@ import { ActionReportSection } from "./ActionReportSection";
 import { SEODetailSections } from "./SEODetailSections";
 import { ConfidenceSection } from "./ConfidenceSection";
 import { ScanMetaBanner } from "./ScanMetaBanner";
+import { CoreWebVitals } from "./CoreWebVitals";
 import { ScanProgressAnimation } from "./ScanProgressAnimation";
 import { ScanHistoryPanel } from "./ScanHistoryPanel";
 import { motion } from "framer-motion";
@@ -148,6 +149,7 @@ export function SEOAnalyzer() {
           {result.confidence && <ConfidenceSection indicators={result.confidence} />}
           {result.actionReport && <ActionReportSection report={result.actionReport} />}
           {result.generatedFixes && <GeneratedFixes fixes={result.generatedFixes} />}
+          {result.pageSpeed && <CoreWebVitals pageSpeed={result.pageSpeed} />}
 
           {result.issues.length > 0 ? (
             <div className="space-y-4 sm:space-y-6">
