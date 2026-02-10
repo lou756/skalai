@@ -14,6 +14,19 @@ export interface BrokenLink {
   url: string;
   statusCode: number | null;
   error: string | null;
+  status: 'broken' | 'timeout' | 'error';
+}
+
+export interface GSCSignal {
+  signal: string;
+  found: boolean;
+  detail: string;
+}
+
+export interface GSCDetection {
+  detected: boolean;
+  confidence: number;
+  signals: GSCSignal[];
 }
 
 export interface SEOMeta {
@@ -186,6 +199,7 @@ export interface SEOAnalysisResult {
   pageSpeed: PageSpeedResult | null;
   pageSpeedDesktop: PageSpeedResult | null;
   brokenLinks: BrokenLink[];
+  gscDetection: GSCDetection;
   gscInstructions: string[];
   contentAnalysis: ContentAnalysis;
   hreflangAnalysis: HreflangAnalysis;

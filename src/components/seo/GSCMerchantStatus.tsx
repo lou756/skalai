@@ -11,10 +11,14 @@ interface GSCMerchantStatusProps {
 export function GSCMerchantStatus({ result }: GSCMerchantStatusProps) {
   const { t } = useI18n();
   const [showGSCGuide, setShowGSCGuide] = useState(false);
+  const [showGSCSignals, setShowGSCSignals] = useState(false);
   const [showMerchantGuide, setShowMerchantGuide] = useState(false);
   const [showSignals, setShowSignals] = useState(false);
 
-  const hasGSC = result.sitemap.found && result.sitemap.isValid && !result.robotsTxt.blocksGooglebot;
+  // GSC multi-signal detection
+  const gscDetection = result.gscDetection ?? { detected: false, confidence: 0, signals: [] };
+  const gscConfidence = gscDetection.confidence;
+  const hasGSC = gscDetection.detected;
   
   const merchantConfidence = result.merchantAnalysis.merchantConfidence ?? 0;
   const merchantSignals = result.merchantAnalysis.merchantSignals ?? [];
@@ -64,28 +68,71 @@ export function GSCMerchantStatus({ result }: GSCMerchantStatusProps) {
         <div className="flex items-center gap-3 mb-3">
           <div className={cn(
             "h-8 w-8 rounded-lg flex items-center justify-center",
-            hasGSC ? "bg-emerald-500/10" : "bg-amber-500/10"
+            getConfidenceBg(gscConfidence)
           )}>
-            <Search className={cn("h-4 w-4", hasGSC ? "text-emerald-500" : "text-amber-500")} />
+            <Search className={cn("h-4 w-4", getConfidenceColor(gscConfidence))} />
           </div>
           <div className="flex-1 min-w-0">
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 flex-wrap">
               {hasGSC ? (
                 <CheckCircle2 className="h-4 w-4 text-emerald-500 shrink-0" />
+              ) : gscConfidence > 0 ? (
+                <AlertTriangle className="h-4 w-4 text-amber-500 shrink-0" />
               ) : (
-                <XCircle className="h-4 w-4 text-amber-500 shrink-0" />
+                <XCircle className="h-4 w-4 text-muted-foreground shrink-0" />
               )}
               <span className="text-sm font-medium">
-                {hasGSC ? t('gsc.detected') : t('gsc.notDetected')}
+                {hasGSC ? 'Google Search Console détecté' : 'Google Search Console'}
               </span>
+              {gscConfidence > 0 && (
+                <span className={cn(
+                  "text-[10px] px-1.5 py-0.5 rounded-full font-medium",
+                  getConfidenceBg(gscConfidence),
+                  getConfidenceColor(gscConfidence)
+                )}>
+                  {gscConfidence}% — {getConfidenceLabel(gscConfidence)}
+                </span>
+              )}
             </div>
             <p className="text-xs text-muted-foreground mt-0.5">
               {hasGSC
-                ? "Sitemap valide et site indexable — Google Search Console est probablement configuré."
-                : "Aucun sitemap valide ou le site bloque Googlebot. Configurez GSC pour améliorer l'indexation."}
+                ? `${gscDetection.signals.filter(s => s.found).length}/${gscDetection.signals.length} signaux positifs. Forte probabilité que GSC soit configuré.`
+                : "Signaux insuffisants pour confirmer la configuration de Google Search Console."}
             </p>
           </div>
         </div>
+
+        {/* GSC Signal details */}
+        {gscDetection.signals.length > 0 && (
+          <>
+            <button
+              onClick={() => setShowGSCSignals(!showGSCSignals)}
+              className="flex items-center gap-1 text-xs text-primary hover:underline font-medium mb-2"
+            >
+              {showGSCSignals ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
+              Voir les {gscDetection.signals.length} signaux analysés
+            </button>
+            {showGSCSignals && (
+              <div className="space-y-1.5 mb-3">
+                {gscDetection.signals.map((sig, i) => (
+                  <div key={i} className="flex items-start gap-2 py-1 border-b border-border/20 last:border-0">
+                    {sig.found ? (
+                      <CheckCircle2 className="h-3.5 w-3.5 text-emerald-500 shrink-0 mt-0.5" />
+                    ) : (
+                      <XCircle className="h-3.5 w-3.5 text-muted-foreground shrink-0 mt-0.5" />
+                    )}
+                    <div className="min-w-0">
+                      <span className={cn("text-xs font-medium", sig.found ? "text-foreground" : "text-muted-foreground")}>
+                        {sig.signal}
+                      </span>
+                      <p className="text-[11px] text-muted-foreground leading-tight">{sig.detail}</p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </>
+        )}
 
         {!hasGSC && (
           <>
