@@ -86,6 +86,10 @@ export interface MerchantSignal {
 export interface MerchantComplianceCheck {
   name: string;
   found: boolean;
+  pageUrl: string | null;
+  contentAnalyzed: boolean;
+  contentValid: boolean | null;
+  contentIssues: string[];
   detail: string;
   category: 'policy' | 'product_quality' | 'trust';
 }
