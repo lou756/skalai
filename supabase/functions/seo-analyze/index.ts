@@ -2094,16 +2094,125 @@ async function checkMerchantCompliance(
     category: 'product_quality',
   });
 
+  // GTIN / Identifiant produit
+  const productsWithGTIN = products.filter(p => p.gtin || (p.mpn && p.brand));
+  const allHaveIdentifiers = products.length > 0 && productsWithGTIN.length === products.length;
+  checks.push({
+    name: 'GTIN / Identifiant produit',
+    found: allHaveIdentifiers,
+    pageUrl: null,
+    contentAnalyzed: products.length > 0,
+    contentValid: allHaveIdentifiers,
+    contentIssues: !allHaveIdentifiers && products.length > 0 
+      ? [`${products.length - productsWithGTIN.length} produit(s) sans GTIN ni couple MPN+marque`] 
+      : [],
+    detail: products.length === 0
+      ? 'Aucun produit détecté.'
+      : allHaveIdentifiers
+        ? `${productsWithGTIN.length}/${products.length} ont un identifiant (GTIN ou MPN+marque). Obligatoire pour Google Shopping.`
+        : `${productsWithGTIN.length}/${products.length} ont un identifiant. Google exige GTIN (EAN/UPC) ou MPN+marque pour chaque produit.`,
+    category: 'product_quality',
+  });
+
+  // Disponibilité produit
+  const productsWithAvailability = products.filter(p => p.availability);
+  const allHaveAvailability = products.length > 0 && productsWithAvailability.length === products.length;
+  checks.push({
+    name: 'Disponibilité produit',
+    found: allHaveAvailability,
+    pageUrl: null,
+    contentAnalyzed: products.length > 0,
+    contentValid: allHaveAvailability,
+    contentIssues: !allHaveAvailability && products.length > 0 
+      ? [`${products.length - productsWithAvailability.length} produit(s) sans statut de disponibilité (InStock/OutOfStock)`] 
+      : [],
+    detail: products.length === 0
+      ? 'Aucun produit détecté.'
+      : allHaveAvailability
+        ? `${productsWithAvailability.length}/${products.length} ont un statut de disponibilité conforme.`
+        : `${productsWithAvailability.length}/${products.length} ont un statut. Obligatoire : InStock, OutOfStock, PreOrder, etc.`,
+    category: 'product_quality',
+  });
+
+  // HTTPS / SSL
+  const siteUrl = allSiteUrls[0] || '';
+  const isHttps = siteUrl.startsWith('https://');
+  const hasSSL = /https:\/\//i.test(html);
+  checks.push({
+    name: 'HTTPS / SSL obligatoire',
+    found: isHttps,
+    pageUrl: null,
+    contentAnalyzed: true,
+    contentValid: isHttps,
+    contentIssues: !isHttps ? ['Le site n\'utilise pas HTTPS. Obligatoire pour Merchant Center.'] : [],
+    detail: isHttps 
+      ? 'Site en HTTPS. Vérifiez que toutes les pages produits et le checkout sont aussi en HTTPS.'
+      : 'Site non HTTPS. Google Merchant Center exige HTTPS sur toutes les pages, surtout le checkout.',
+    category: 'technical',
+  });
+
+  // Informations vendeur / identité légale
+  const legalPatterns = /\/(about|a-propos|qui-sommes-nous|mentions-legales|legal|imprint|impressum|about-us)/i;
+  const hasLegalPage = allSiteUrls.some(u => legalPatterns.test(u.toLowerCase()));
+  const hasBusinessInfo = /siret|siren|tva|vat|rcs|n°\s*(de\s*)?(siret|siren|tva)|company\s*registration|business\s*registration/i.test(html);
+  const hasAddress = /<address|itemprop=["']address/i.test(html) || /\d{5}\s+[A-Za-zÀ-ÿ]+|street|rue\s+/i.test(html);
+  checks.push({
+    name: 'Informations vendeur',
+    found: hasLegalPage || hasBusinessInfo || hasAddress,
+    pageUrl: allSiteUrls.find(u => legalPatterns.test(u.toLowerCase())) || null,
+    contentAnalyzed: true,
+    contentValid: hasBusinessInfo && hasAddress,
+    contentIssues: [
+      ...(!hasBusinessInfo ? ['Aucun numéro d\'identification légale détecté (SIRET, TVA, RCS)'] : []),
+      ...(!hasAddress ? ['Aucune adresse physique détectée'] : []),
+      ...(!hasLegalPage ? ['Aucune page "À propos" ou mentions légales trouvée'] : []),
+    ].filter(Boolean),
+    detail: hasBusinessInfo && hasAddress
+      ? 'Identité légale et adresse physique détectées. Google exige ces informations pour valider un vendeur.'
+      : 'Google exige une identité vérifiable : nom d\'entreprise, adresse physique, numéro d\'enregistrement.',
+    category: 'identity',
+  });
+
+  // Cohérence devise / pays cible
+  const currencies = [...new Set(products.map(p => p.currency).filter(Boolean))];
+  const hasConsistentCurrency = currencies.length <= 1;
+  checks.push({
+    name: 'Cohérence devise',
+    found: currencies.length > 0,
+    pageUrl: null,
+    contentAnalyzed: products.length > 0,
+    contentValid: hasConsistentCurrency && currencies.length > 0,
+    contentIssues: currencies.length > 1 
+      ? [`${currencies.length} devises détectées (${currencies.join(', ')}). Doit être cohérent avec le pays cible.`] 
+      : [],
+    detail: currencies.length === 0
+      ? 'Aucune devise détectée dans les produits.'
+      : hasConsistentCurrency
+        ? `Devise unique détectée : ${currencies[0]}. Assurez-vous qu\'elle correspond à votre pays cible Merchant Center.`
+        : `Devises multiples détectées : ${currencies.join(', ')}. Google exige une devise cohérente par flux.`,
+    category: 'product_quality',
+  });
+
+  // Paiement sécurisé + moyens de paiement
   const checkoutPatterns = /\/(checkout|commande|paiement|order|panier|cart)/i;
   const hasCheckout = allSiteUrls.some(u => checkoutPatterns.test(u.toLowerCase()));
+  const paymentMethodsPattern = /visa|mastercard|paypal|stripe|carte\s*(bancaire|de\s*crédit)|credit\s*card|apple\s*pay|google\s*pay|klarna|bancontact|ideal|sepa/gi;
+  const paymentMethodsFound = html.match(paymentMethodsPattern) || [];
+  const uniquePaymentMethods = [...new Set(paymentMethodsFound.map(m => m.toLowerCase()))];
   checks.push({
     name: 'Paiement sécurisé',
-    found: hasCheckout,
+    found: hasCheckout || uniquePaymentMethods.length > 0,
     pageUrl: null,
-    contentAnalyzed: false,
-    contentValid: null,
-    contentIssues: [],
-    detail: hasCheckout ? 'Page checkout détectée. Vérifiez HTTPS + SSL.' : 'Aucune page de paiement détectée.',
+    contentAnalyzed: true,
+    contentValid: hasCheckout && isHttps,
+    contentIssues: [
+      ...(!hasCheckout ? ['Aucune page de checkout/paiement détectée'] : []),
+      ...(!isHttps ? ['Le paiement doit impérativement être en HTTPS'] : []),
+      ...(uniquePaymentMethods.length === 0 ? ['Aucun moyen de paiement détecté (Visa, PayPal, etc.)'] : []),
+    ].filter(Boolean),
+    detail: uniquePaymentMethods.length > 0
+      ? `Moyens de paiement détectés : ${uniquePaymentMethods.join(', ')}. ${hasCheckout ? 'Page checkout trouvée.' : 'Pas de page checkout identifiée.'}`
+      : hasCheckout ? 'Page checkout détectée mais aucun moyen de paiement identifié.' : 'Aucune page de paiement ni moyen de paiement détecté.',
     category: 'trust',
   });
 

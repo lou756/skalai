@@ -67,6 +67,8 @@ export function GSCMerchantStatus({ result }: GSCMerchantStatusProps) {
       case 'policy': return '📋';
       case 'product_quality': return '📸';
       case 'trust': return '🔒';
+      case 'identity': return '🏢';
+      case 'technical': return '⚙️';
       default: return '✓';
     }
   };
@@ -371,7 +373,7 @@ export function GSCMerchantStatus({ result }: GSCMerchantStatusProps) {
                             {check.contentValid ? 'Contenu conforme' : 'Contenu insuffisant'}
                           </span>
                         )}
-                        {check.found && !check.contentAnalyzed && check.category !== 'product_quality' && check.category !== 'trust' && (
+                        {check.found && !check.contentAnalyzed && !['product_quality', 'trust', 'identity', 'technical'].includes(check.category) && (
                           <span className="text-[9px] px-1 py-0.5 rounded bg-blue-500/10 text-blue-600 font-medium">
                             Non analysé
                           </span>
