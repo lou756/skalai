@@ -1,4 +1,4 @@
-import { CheckCircle2, XCircle, ExternalLink, ChevronDown, ChevronUp, Search, ShoppingCart, Shield, AlertTriangle } from "lucide-react";
+import { CheckCircle2, XCircle, ExternalLink, ChevronDown, ChevronUp, Search, ShoppingCart, Shield, AlertTriangle, FileText } from "lucide-react";
 import { useState } from "react";
 import { useI18n } from "@/lib/i18n";
 import type { SEOAnalysisResult } from "@/lib/api/seo";
@@ -14,8 +14,8 @@ export function GSCMerchantStatus({ result }: GSCMerchantStatusProps) {
   const [showGSCSignals, setShowGSCSignals] = useState(false);
   const [showMerchantGuide, setShowMerchantGuide] = useState(false);
   const [showSignals, setShowSignals] = useState(false);
+  const [showCompliance, setShowCompliance] = useState(false);
 
-  // GSC multi-signal detection
   const gscDetection = result.gscDetection ?? { detected: false, confidence: 0, signals: [] };
   const gscConfidence = gscDetection.confidence;
   const hasGSC = gscDetection.detected;
@@ -24,6 +24,7 @@ export function GSCMerchantStatus({ result }: GSCMerchantStatusProps) {
   const merchantSignals = result.merchantAnalysis.merchantSignals ?? [];
   const hasMerchant = merchantConfidence >= 50;
   const isEcommerce = result.merchantAnalysis.isProductPage;
+  const compliance = result.merchantAnalysis.compliance;
 
   const getConfidenceColor = (confidence: number) => {
     if (confidence >= 70) return 'text-emerald-500';
@@ -61,227 +62,318 @@ export function GSCMerchantStatus({ result }: GSCMerchantStatusProps) {
     { step: "6", text: `Soumettez votre flux et attendez l'approbation de Google (généralement 3-5 jours ouvrables).` },
   ];
 
+  const getCategoryIcon = (category: string) => {
+    switch (category) {
+      case 'policy': return '📋';
+      case 'product_quality': return '📸';
+      case 'trust': return '🔒';
+      default: return '✓';
+    }
+  };
+
   return (
-    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-      {/* GSC Status */}
-      <div className="glass-card rounded-xl p-4">
-        <div className="flex items-center gap-3 mb-3">
-          <div className={cn(
-            "h-8 w-8 rounded-lg flex items-center justify-center",
-            getConfidenceBg(gscConfidence)
-          )}>
-            <Search className={cn("h-4 w-4", getConfidenceColor(gscConfidence))} />
-          </div>
-          <div className="flex-1 min-w-0">
-            <div className="flex items-center gap-2 flex-wrap">
-              {hasGSC ? (
-                <CheckCircle2 className="h-4 w-4 text-emerald-500 shrink-0" />
-              ) : gscConfidence > 0 ? (
-                <AlertTriangle className="h-4 w-4 text-amber-500 shrink-0" />
-              ) : (
-                <XCircle className="h-4 w-4 text-muted-foreground shrink-0" />
-              )}
-              <span className="text-sm font-medium">
-                {hasGSC ? 'Google Search Console détecté' : 'Google Search Console'}
-              </span>
-              {gscConfidence > 0 && (
-                <span className={cn(
-                  "text-[10px] px-1.5 py-0.5 rounded-full font-medium",
-                  getConfidenceBg(gscConfidence),
-                  getConfidenceColor(gscConfidence)
-                )}>
-                  {gscConfidence}% — {getConfidenceLabel(gscConfidence)}
-                </span>
-              )}
+    <div className="space-y-4">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        {/* GSC Status */}
+        <div className="glass-card rounded-xl p-4">
+          <div className="flex items-center gap-3 mb-3">
+            <div className={cn(
+              "h-8 w-8 rounded-lg flex items-center justify-center",
+              getConfidenceBg(gscConfidence)
+            )}>
+              <Search className={cn("h-4 w-4", getConfidenceColor(gscConfidence))} />
             </div>
-            <p className="text-xs text-muted-foreground mt-0.5">
-              {hasGSC
-                ? `${gscDetection.signals.filter(s => s.found).length}/${gscDetection.signals.length} signaux positifs. Forte probabilité que GSC soit configuré.`
-                : "Signaux insuffisants pour confirmer la configuration de Google Search Console."}
-            </p>
-          </div>
-        </div>
-
-        {/* GSC Signal details */}
-        {gscDetection.signals.length > 0 && (
-          <>
-            <button
-              onClick={() => setShowGSCSignals(!showGSCSignals)}
-              className="flex items-center gap-1 text-xs text-primary hover:underline font-medium mb-2"
-            >
-              {showGSCSignals ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
-              Voir les {gscDetection.signals.length} signaux analysés
-            </button>
-            {showGSCSignals && (
-              <div className="space-y-1.5 mb-3">
-                {gscDetection.signals.map((sig, i) => (
-                  <div key={i} className="flex items-start gap-2 py-1 border-b border-border/20 last:border-0">
-                    {sig.found ? (
-                      <CheckCircle2 className="h-3.5 w-3.5 text-emerald-500 shrink-0 mt-0.5" />
-                    ) : (
-                      <XCircle className="h-3.5 w-3.5 text-muted-foreground shrink-0 mt-0.5" />
-                    )}
-                    <div className="min-w-0">
-                      <span className={cn("text-xs font-medium", sig.found ? "text-foreground" : "text-muted-foreground")}>
-                        {sig.signal}
-                      </span>
-                      <p className="text-[11px] text-muted-foreground leading-tight">{sig.detail}</p>
-                    </div>
-                  </div>
-                ))}
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center gap-2 flex-wrap">
+                {hasGSC ? (
+                  <CheckCircle2 className="h-4 w-4 text-emerald-500 shrink-0" />
+                ) : gscConfidence > 0 ? (
+                  <AlertTriangle className="h-4 w-4 text-amber-500 shrink-0" />
+                ) : (
+                  <XCircle className="h-4 w-4 text-muted-foreground shrink-0" />
+                )}
+                <span className="text-sm font-medium">
+                  {hasGSC ? 'Google Search Console détecté' : 'Google Search Console'}
+                </span>
+                {gscConfidence > 0 && (
+                  <span className={cn(
+                    "text-[10px] px-1.5 py-0.5 rounded-full font-medium",
+                    getConfidenceBg(gscConfidence),
+                    getConfidenceColor(gscConfidence)
+                  )}>
+                    {gscConfidence}% — {getConfidenceLabel(gscConfidence)}
+                  </span>
+                )}
               </div>
-            )}
-          </>
-        )}
+              <p className="text-xs text-muted-foreground mt-0.5">
+                {hasGSC
+                  ? `${gscDetection.signals.filter(s => s.found).length}/${gscDetection.signals.length} signaux positifs. Forte probabilité que GSC soit configuré.`
+                  : "Signaux insuffisants pour confirmer la configuration de Google Search Console."}
+              </p>
+            </div>
+          </div>
 
-        {!hasGSC && (
-          <>
-            <button
-              onClick={() => setShowGSCGuide(!showGSCGuide)}
-              className="flex items-center gap-1 text-xs text-primary hover:underline font-medium"
-            >
-              {showGSCGuide ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
-              {t('gsc.guide')}
-            </button>
-            {showGSCGuide && (
-              <div className="mt-3 space-y-2">
-                {gscSteps.map(s => (
-                  <div key={s.step} className="flex gap-2 text-xs">
-                    <span className="shrink-0 h-5 w-5 rounded-full bg-primary/10 text-primary flex items-center justify-center font-bold text-[10px]">
-                      {s.step}
-                    </span>
-                    <span className="text-muted-foreground">
-                      {s.text}
-                      {s.url && (
-                        <a href={s.url} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-0.5 text-primary hover:underline ml-1">
-                          <ExternalLink className="h-2.5 w-2.5" />
-                        </a>
+          {gscDetection.signals.length > 0 && (
+            <>
+              <button
+                onClick={() => setShowGSCSignals(!showGSCSignals)}
+                className="flex items-center gap-1 text-xs text-primary hover:underline font-medium mb-2"
+              >
+                {showGSCSignals ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
+                Voir les {gscDetection.signals.length} signaux analysés
+              </button>
+              {showGSCSignals && (
+                <div className="space-y-1.5 mb-3">
+                  {gscDetection.signals.map((sig, i) => (
+                    <div key={i} className="flex items-start gap-2 py-1 border-b border-border/20 last:border-0">
+                      {sig.found ? (
+                        <CheckCircle2 className="h-3.5 w-3.5 text-emerald-500 shrink-0 mt-0.5" />
+                      ) : (
+                        <XCircle className="h-3.5 w-3.5 text-muted-foreground shrink-0 mt-0.5" />
                       )}
-                    </span>
-                  </div>
-                ))}
-              </div>
-            )}
-          </>
-        )}
-      </div>
-
-      {/* Merchant Status - Enhanced with multi-signal detection */}
-      <div className="glass-card rounded-xl p-4">
-        <div className="flex items-center gap-3 mb-3">
-          <div className={cn(
-            "h-8 w-8 rounded-lg flex items-center justify-center",
-            isEcommerce ? getConfidenceBg(merchantConfidence) : "bg-muted"
-          )}>
-            <ShoppingCart className={cn("h-4 w-4", isEcommerce ? getConfidenceColor(merchantConfidence) : "text-muted-foreground")} />
-          </div>
-          <div className="flex-1 min-w-0">
-            <div className="flex items-center gap-2 flex-wrap">
-              {hasMerchant ? (
-                <CheckCircle2 className="h-4 w-4 text-emerald-500 shrink-0" />
-              ) : isEcommerce ? (
-                <AlertTriangle className="h-4 w-4 text-amber-500 shrink-0" />
-              ) : (
-                <XCircle className="h-4 w-4 text-muted-foreground shrink-0" />
-              )}
-              <span className="text-sm font-medium">
-                {isEcommerce ? 'Éligibilité Merchant Center' : 'Site non e-commerce'}
-              </span>
-              {isEcommerce && (
-                <span className={cn(
-                  "text-[10px] px-1.5 py-0.5 rounded-full font-medium",
-                  getConfidenceBg(merchantConfidence),
-                  getConfidenceColor(merchantConfidence)
-                )}>
-                  {merchantConfidence}% — {getConfidenceLabel(merchantConfidence)}
-                </span>
-              )}
-            </div>
-            <p className="text-xs text-muted-foreground mt-0.5">
-              {isEcommerce
-                ? `${merchantSignals.filter(s => s.found).length}/${merchantSignals.length} signaux détectés. ${result.merchantAnalysis.productPagesFound || 0} URL(s) produit, ${result.merchantAnalysis.products.length} produit(s) analysés.`
-                : "Aucun signal e-commerce détecté. Si vous vendez des produits, configurez Google Merchant Center."}
-            </p>
-          </div>
-        </div>
-
-        {/* Signal details */}
-        {isEcommerce && merchantSignals.length > 0 && (
-          <>
-            <button
-              onClick={() => setShowSignals(!showSignals)}
-              className="flex items-center gap-1 text-xs text-primary hover:underline font-medium mb-2"
-            >
-              {showSignals ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
-              Voir les {merchantSignals.length} signaux analysés
-            </button>
-            {showSignals && (
-              <div className="space-y-1.5 mb-3">
-                {merchantSignals.map((sig, i) => (
-                  <div key={i} className="flex items-start gap-2 py-1 border-b border-border/20 last:border-0">
-                    {sig.found ? (
-                      <CheckCircle2 className="h-3.5 w-3.5 text-emerald-500 shrink-0 mt-0.5" />
-                    ) : (
-                      <XCircle className="h-3.5 w-3.5 text-muted-foreground shrink-0 mt-0.5" />
-                    )}
-                    <div className="min-w-0">
-                      <div className="flex items-center gap-1.5">
+                      <div className="min-w-0">
                         <span className={cn("text-xs font-medium", sig.found ? "text-foreground" : "text-muted-foreground")}>
                           {sig.signal}
                         </span>
-                        <span className="text-[10px] text-muted-foreground">
-                          (poids: {sig.weight}%)
-                        </span>
+                        <p className="text-[11px] text-muted-foreground leading-tight">{sig.detail}</p>
                       </div>
-                      <p className="text-[11px] text-muted-foreground leading-tight">{sig.detail}</p>
                     </div>
-                  </div>
-                ))}
-              </div>
-            )}
+                  ))}
+                </div>
+              )}
+            </>
+          )}
 
-            {/* Confidence disclaimer */}
-            <div className="flex items-start gap-1.5 p-2 rounded-lg bg-muted/50 mt-2">
-              <Shield className="h-3 w-3 text-muted-foreground shrink-0 mt-0.5" />
-              <p className="text-[10px] text-muted-foreground leading-tight">
-                Cette analyse vérifie l'<strong>éligibilité technique</strong> au Merchant Center (balisage, structure, signaux). 
-                Elle ne peut pas confirmer si un compte Merchant Center est réellement actif, car cette information n'est pas publique.
+          {!hasGSC && (
+            <>
+              <button
+                onClick={() => setShowGSCGuide(!showGSCGuide)}
+                className="flex items-center gap-1 text-xs text-primary hover:underline font-medium"
+              >
+                {showGSCGuide ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
+                {t('gsc.guide')}
+              </button>
+              {showGSCGuide && (
+                <div className="mt-3 space-y-2">
+                  {gscSteps.map(s => (
+                    <div key={s.step} className="flex gap-2 text-xs">
+                      <span className="shrink-0 h-5 w-5 rounded-full bg-primary/10 text-primary flex items-center justify-center font-bold text-[10px]">
+                        {s.step}
+                      </span>
+                      <span className="text-muted-foreground">
+                        {s.text}
+                        {s.url && (
+                          <a href={s.url} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-0.5 text-primary hover:underline ml-1">
+                            <ExternalLink className="h-2.5 w-2.5" />
+                          </a>
+                        )}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </>
+          )}
+        </div>
+
+        {/* Merchant Status */}
+        <div className="glass-card rounded-xl p-4">
+          <div className="flex items-center gap-3 mb-3">
+            <div className={cn(
+              "h-8 w-8 rounded-lg flex items-center justify-center",
+              isEcommerce ? getConfidenceBg(merchantConfidence) : "bg-muted"
+            )}>
+              <ShoppingCart className={cn("h-4 w-4", isEcommerce ? getConfidenceColor(merchantConfidence) : "text-muted-foreground")} />
+            </div>
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center gap-2 flex-wrap">
+                {hasMerchant ? (
+                  <CheckCircle2 className="h-4 w-4 text-emerald-500 shrink-0" />
+                ) : isEcommerce ? (
+                  <AlertTriangle className="h-4 w-4 text-amber-500 shrink-0" />
+                ) : (
+                  <XCircle className="h-4 w-4 text-muted-foreground shrink-0" />
+                )}
+                <span className="text-sm font-medium">
+                  {isEcommerce ? 'Éligibilité Merchant Center' : 'Site non e-commerce'}
+                </span>
+                {isEcommerce && (
+                  <span className={cn(
+                    "text-[10px] px-1.5 py-0.5 rounded-full font-medium",
+                    getConfidenceBg(merchantConfidence),
+                    getConfidenceColor(merchantConfidence)
+                  )}>
+                    {merchantConfidence}% — {getConfidenceLabel(merchantConfidence)}
+                  </span>
+                )}
+              </div>
+              <p className="text-xs text-muted-foreground mt-0.5">
+                {isEcommerce
+                  ? `${merchantSignals.filter(s => s.found).length}/${merchantSignals.length} signaux détectés. ${result.merchantAnalysis.productPagesFound || 0} URL(s) produit, ${result.merchantAnalysis.products.length} produit(s) analysés.`
+                  : "Aucun signal e-commerce détecté. Si vous vendez des produits, configurez Google Merchant Center."}
               </p>
             </div>
-          </>
-        )}
+          </div>
 
-        {!hasMerchant && isEcommerce && (
-          <>
-            <button
-              onClick={() => setShowMerchantGuide(!showMerchantGuide)}
-              className="flex items-center gap-1 text-xs text-primary hover:underline font-medium"
-            >
-              {showMerchantGuide ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
-              {t('merchant.guide')}
-            </button>
-            {showMerchantGuide && (
-              <div className="mt-3 space-y-2">
-                {merchantSteps.map(s => (
-                  <div key={s.step} className="flex gap-2 text-xs">
-                    <span className="shrink-0 h-5 w-5 rounded-full bg-primary/10 text-primary flex items-center justify-center font-bold text-[10px]">
-                      {s.step}
-                    </span>
-                    <span className="text-muted-foreground">
-                      {s.text}
-                      {s.url && (
-                        <a href={s.url} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-0.5 text-primary hover:underline ml-1">
-                          <ExternalLink className="h-2.5 w-2.5" />
-                        </a>
+          {isEcommerce && merchantSignals.length > 0 && (
+            <>
+              <button
+                onClick={() => setShowSignals(!showSignals)}
+                className="flex items-center gap-1 text-xs text-primary hover:underline font-medium mb-2"
+              >
+                {showSignals ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
+                Voir les {merchantSignals.length} signaux analysés
+              </button>
+              {showSignals && (
+                <div className="space-y-1.5 mb-3">
+                  {merchantSignals.map((sig, i) => (
+                    <div key={i} className="flex items-start gap-2 py-1 border-b border-border/20 last:border-0">
+                      {sig.found ? (
+                        <CheckCircle2 className="h-3.5 w-3.5 text-emerald-500 shrink-0 mt-0.5" />
+                      ) : (
+                        <XCircle className="h-3.5 w-3.5 text-muted-foreground shrink-0 mt-0.5" />
                       )}
-                    </span>
-                  </div>
-                ))}
+                      <div className="min-w-0">
+                        <div className="flex items-center gap-1.5">
+                          <span className={cn("text-xs font-medium", sig.found ? "text-foreground" : "text-muted-foreground")}>
+                            {sig.signal}
+                          </span>
+                          <span className="text-[10px] text-muted-foreground">
+                            (poids: {sig.weight}%)
+                          </span>
+                        </div>
+                        <p className="text-[11px] text-muted-foreground leading-tight">{sig.detail}</p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              <div className="flex items-start gap-1.5 p-2 rounded-lg bg-muted/50 mt-2">
+                <Shield className="h-3 w-3 text-muted-foreground shrink-0 mt-0.5" />
+                <p className="text-[10px] text-muted-foreground leading-tight">
+                  Cette analyse vérifie l'<strong>éligibilité technique</strong> au Merchant Center (balisage, structure, signaux). 
+                  Elle ne peut pas confirmer si un compte Merchant Center est réellement actif, car cette information n'est pas publique.
+                </p>
               </div>
-            )}
-          </>
-        )}
+            </>
+          )}
+
+          {!hasMerchant && isEcommerce && (
+            <>
+              <button
+                onClick={() => setShowMerchantGuide(!showMerchantGuide)}
+                className="flex items-center gap-1 text-xs text-primary hover:underline font-medium"
+              >
+                {showMerchantGuide ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
+                {t('merchant.guide')}
+              </button>
+              {showMerchantGuide && (
+                <div className="mt-3 space-y-2">
+                  {merchantSteps.map(s => (
+                    <div key={s.step} className="flex gap-2 text-xs">
+                      <span className="shrink-0 h-5 w-5 rounded-full bg-primary/10 text-primary flex items-center justify-center font-bold text-[10px]">
+                        {s.step}
+                      </span>
+                      <span className="text-muted-foreground">
+                        {s.text}
+                        {s.url && (
+                          <a href={s.url} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-0.5 text-primary hover:underline ml-1">
+                            <ExternalLink className="h-2.5 w-2.5" />
+                          </a>
+                        )}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </>
+          )}
+        </div>
       </div>
+
+      {/* Merchant Compliance Section - Full width below */}
+      {isEcommerce && compliance && (
+        <div className="glass-card rounded-xl p-4">
+          <div className="flex items-center gap-3 mb-3">
+            <div className={cn(
+              "h-8 w-8 rounded-lg flex items-center justify-center",
+              getConfidenceBg(compliance.score)
+            )}>
+              <FileText className={cn("h-4 w-4", getConfidenceColor(compliance.score))} />
+            </div>
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center gap-2 flex-wrap">
+                {compliance.score >= 80 ? (
+                  <CheckCircle2 className="h-4 w-4 text-emerald-500 shrink-0" />
+                ) : compliance.score >= 50 ? (
+                  <AlertTriangle className="h-4 w-4 text-amber-500 shrink-0" />
+                ) : (
+                  <XCircle className="h-4 w-4 text-destructive shrink-0" />
+                )}
+                <span className="text-sm font-medium">Conformité Merchant Center</span>
+                <span className={cn(
+                  "text-[10px] px-1.5 py-0.5 rounded-full font-medium",
+                  getConfidenceBg(compliance.score),
+                  getConfidenceColor(compliance.score)
+                )}>
+                  {compliance.score}% — {compliance.checks.filter(c => c.found).length}/{compliance.checks.length} critères
+                </span>
+              </div>
+              <p className="text-xs text-muted-foreground mt-0.5">
+                Vérification des pages et critères métier requis par Google Merchant Center pour l'approbation des produits.
+              </p>
+            </div>
+          </div>
+
+          <button
+            onClick={() => setShowCompliance(!showCompliance)}
+            className="flex items-center gap-1 text-xs text-primary hover:underline font-medium mb-2"
+          >
+            {showCompliance ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
+            Voir les {compliance.checks.length} critères vérifiés
+          </button>
+
+          {showCompliance && (
+            <div className="space-y-1.5 mb-3">
+              {compliance.checks.map((check, i) => (
+                <div key={i} className="flex items-start gap-2 py-1 border-b border-border/20 last:border-0">
+                  {check.found ? (
+                    <CheckCircle2 className="h-3.5 w-3.5 text-emerald-500 shrink-0 mt-0.5" />
+                  ) : (
+                    <XCircle className="h-3.5 w-3.5 text-destructive shrink-0 mt-0.5" />
+                  )}
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-1.5">
+                      <span className="text-xs">{getCategoryIcon(check.category)}</span>
+                      <span className={cn("text-xs font-medium", check.found ? "text-foreground" : "text-destructive")}>
+                        {check.name}
+                      </span>
+                    </div>
+                    <p className="text-[11px] text-muted-foreground leading-tight">{check.detail}</p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {compliance.recommendations.length > 0 && (
+            <div className="space-y-1 mt-2 p-2 rounded-lg bg-muted/50">
+              {compliance.recommendations.map((rec, i) => (
+                <p key={i} className="text-[11px] text-muted-foreground leading-tight">{rec}</p>
+              ))}
+            </div>
+          )}
+
+          <div className="flex items-start gap-1.5 p-2 rounded-lg bg-amber-500/5 border border-amber-500/10 mt-3">
+            <AlertTriangle className="h-3 w-3 text-amber-500 shrink-0 mt-0.5" />
+            <p className="text-[10px] text-muted-foreground leading-tight">
+              Cette vérification détecte la <strong>présence</strong> des pages requises, mais ne peut pas analyser leur <strong>contenu</strong> 
+              (ex: si la politique de retour est conforme aux exigences Google). L'approbation finale reste à la discrétion de Google.
+            </p>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

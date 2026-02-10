@@ -61,6 +61,20 @@ interface MerchantSignal {
   weight: number;
 }
 
+interface MerchantComplianceCheck {
+  name: string;
+  found: boolean;
+  detail: string;
+  category: 'policy' | 'product_quality' | 'trust';
+}
+
+interface MerchantCompliance {
+  checks: MerchantComplianceCheck[];
+  score: number; // 0-100
+  missingCritical: string[];
+  recommendations: string[];
+}
+
 interface MerchantAnalysis {
   isProductPage: boolean;
   products: ProductData[];
@@ -70,6 +84,7 @@ interface MerchantAnalysis {
   merchantSignals: MerchantSignal[];
   merchantConfidence: number; // 0-100
   productPagesFound: number;
+  compliance: MerchantCompliance | null;
 }
 
 interface GeneratedFix {
@@ -282,6 +297,19 @@ Deno.serve(async (req) => {
     const contentAnalysis = await analyzeContent(markdown, meta, formattedUrl);
     const hreflangAnalysis = analyzeHreflang(html, meta.language, sitemap);
     const merchantAnalysis = await analyzeMerchantDataAdvanced(html, allSiteUrls, apiKey);
+    // Run merchant compliance check if e-commerce detected
+    if (merchantAnalysis.isProductPage) {
+      merchantAnalysis.compliance = checkMerchantCompliance(html, allSiteUrls, merchantAnalysis);
+      // Add compliance issues to merchant issues
+      merchantAnalysis.compliance.missingCritical.forEach(missing => {
+        merchantAnalysis.issues.push({
+          issue: `Missing ${missing}`,
+          impact: 'Google Merchant Center requires this page for product approval.',
+          fix: `Create a dedicated ${missing} page and link it from your footer/navigation.`,
+          priority: 'High',
+        });
+      });
+    }
     const imageAnalysis = analyzeImages(html);
     const headingAnalysis = analyzeHeadingHierarchy(html);
     const schemaOrgAnalysis = analyzeSchemaOrg(html);
@@ -320,7 +348,7 @@ Deno.serve(async (req) => {
       durationMs,
       pagesCrawled: allSiteUrls.length || 1,
       elementsChecked,
-      engine: 'SKAL IA v4.0',
+      engine: 'SKAL IA v4.3',
       sources: [
         'Firecrawl Web Scraping API',
         'Firecrawl Map API (URL discovery)',
@@ -332,6 +360,7 @@ Deno.serve(async (req) => {
         'Security headers audit (HTTPS, HSTS, CSP, X-Frame-Options)',
         'Redirect chain analysis (301/302)',
         'Schema.org validation (Organization, LocalBusiness, Article, FAQ, BreadcrumbList, Product, WebSite)',
+        'Merchant Compliance (policy pages, trust signals, product quality)',
       ],
     };
 
@@ -1844,7 +1873,157 @@ async function analyzeMerchantDataAdvanced(html: string, allSiteUrls: string[], 
     merchantSignals: signals,
     merchantConfidence,
     productPagesFound: productUrls.length,
+    compliance: null, // Will be filled after if isProductPage
   };
+}
+
+// ─── Merchant Compliance Check (Business Requirements) ───────────────
+
+function checkMerchantCompliance(
+  html: string,
+  allSiteUrls: string[],
+  merchantAnalysis: { products: ProductData[]; structuredDataFound: boolean }
+): MerchantCompliance {
+  const checks: MerchantComplianceCheck[] = [];
+  const missingCritical: string[] = [];
+  const recommendations: string[] = [];
+
+  // Combine HTML links and site URLs for detection
+  const allUrlsLower = allSiteUrls.map(u => u.toLowerCase());
+  const htmlLower = html.toLowerCase();
+
+  // 1. Return/Refund Policy
+  const returnPatterns = /\/(return|refund|retour|remboursement|returns|politique-de-retour|return-policy|refund-policy)/i;
+  const returnInHtml = /politique\s*(de\s*)?(retour|remboursement)|return\s*policy|refund\s*policy|retour\s*et\s*remboursement/i.test(html);
+  const hasReturnPage = allUrlsLower.some(u => returnPatterns.test(u)) || returnInHtml;
+  checks.push({
+    name: 'Politique de retour/remboursement',
+    found: hasReturnPage,
+    detail: hasReturnPage
+      ? 'Page de politique de retour détectée. Requis par Google Merchant Center.'
+      : 'Aucune page de politique de retour trouvée. Obligatoire pour Merchant Center.',
+    category: 'policy',
+  });
+  if (!hasReturnPage) missingCritical.push('Return/Refund Policy page');
+
+  // 2. Shipping Policy
+  const shippingPatterns = /\/(shipping|livraison|delivery|expedition|frais-de-port|shipping-policy)/i;
+  const shippingInHtml = /politique\s*(de\s*)?livraison|shipping\s*(policy|info)|frais\s*de\s*(port|livraison)|delivery\s*(policy|info)/i.test(html);
+  const hasShippingPage = allUrlsLower.some(u => shippingPatterns.test(u)) || shippingInHtml;
+  checks.push({
+    name: 'Politique de livraison',
+    found: hasShippingPage,
+    detail: hasShippingPage
+      ? 'Page de politique de livraison détectée. Les délais et coûts doivent être clairement indiqués.'
+      : 'Aucune page de livraison trouvée. Google exige des informations claires sur la livraison.',
+    category: 'policy',
+  });
+  if (!hasShippingPage) missingCritical.push('Shipping/Delivery Policy page');
+
+  // 3. Terms of Service / CGV
+  const termsPatterns = /\/(terms|cgv|conditions|tos|terms-of-service|conditions-generales|mentions-legales|legal)/i;
+  const termsInHtml = /conditions\s*g[eé]n[eé]rales|terms\s*(of\s*)?service|terms\s*(&|and)\s*conditions|mentions\s*l[eé]gales|cgv/i.test(html);
+  const hasTermsPage = allUrlsLower.some(u => termsPatterns.test(u)) || termsInHtml;
+  checks.push({
+    name: 'CGV / Conditions générales',
+    found: hasTermsPage,
+    detail: hasTermsPage
+      ? 'Page de conditions générales détectée.'
+      : 'Aucune page CGV/Conditions trouvée. Requis pour la conformité légale et Merchant Center.',
+    category: 'policy',
+  });
+  if (!hasTermsPage) missingCritical.push('Terms of Service / CGV page');
+
+  // 4. Contact Page
+  const contactPatterns = /\/(contact|contactez|nous-contacter|contact-us|support)/i;
+  const contactInHtml = /contactez.nous|contact\s*us|nous\s*contacter|formulaire\s*de\s*contact/i.test(html);
+  const hasContactPage = allUrlsLower.some(u => contactPatterns.test(u)) || contactInHtml;
+  checks.push({
+    name: 'Page de contact',
+    found: hasContactPage,
+    detail: hasContactPage
+      ? 'Page de contact détectée. Les coordonnées doivent inclure adresse, email et/ou téléphone.'
+      : 'Aucune page de contact trouvée. Google Merchant exige des coordonnées vérifiables.',
+    category: 'trust',
+  });
+  if (!hasContactPage) missingCritical.push('Contact page');
+
+  // 5. Privacy Policy
+  const privacyPatterns = /\/(privacy|confidentialite|politique-de-confidentialite|privacy-policy|donnees-personnelles|rgpd|gdpr)/i;
+  const privacyInHtml = /politique\s*(de\s*)?confidentialit[eé]|privacy\s*policy|donn[eé]es\s*personnelles|rgpd|gdpr/i.test(html);
+  const hasPrivacyPage = allUrlsLower.some(u => privacyPatterns.test(u)) || privacyInHtml;
+  checks.push({
+    name: 'Politique de confidentialité',
+    found: hasPrivacyPage,
+    detail: hasPrivacyPage
+      ? 'Page de politique de confidentialité détectée.'
+      : 'Aucune page de confidentialité trouvée. Obligatoire (RGPD/GDPR) et pour Merchant Center.',
+    category: 'policy',
+  });
+  if (!hasPrivacyPage) missingCritical.push('Privacy Policy page');
+
+  // 6. Product images quality check (via Schema data)
+  const products = merchantAnalysis.products;
+  const productsWithImages = products.filter(p => p.image);
+  const allHaveImages = products.length > 0 && productsWithImages.length === products.length;
+  checks.push({
+    name: 'Images produits présentes',
+    found: allHaveImages,
+    detail: products.length === 0
+      ? 'Aucun produit détecté pour vérifier les images.'
+      : allHaveImages
+        ? `${productsWithImages.length}/${products.length} produit(s) ont une image. Vérifiez la qualité (min 100x100px, pas de watermarks, fond blanc recommandé).`
+        : `${productsWithImages.length}/${products.length} produit(s) ont une image. Les images manquantes entraîneront un refus Merchant Center.`,
+    category: 'product_quality',
+  });
+
+  // 7. Price + Currency consistency
+  const productsWithPrice = products.filter(p => p.price && p.currency);
+  const allHavePrices = products.length > 0 && productsWithPrice.length === products.length;
+  checks.push({
+    name: 'Prix et devise cohérents',
+    found: allHavePrices,
+    detail: products.length === 0
+      ? 'Aucun produit détecté pour vérifier les prix.'
+      : allHavePrices
+        ? `${productsWithPrice.length}/${products.length} produit(s) ont un prix et une devise. Le prix doit correspondre exactement à celui affiché sur la page.`
+        : `${productsWithPrice.length}/${products.length} produit(s) ont un prix complet. Prix ou devise manquants = refus automatique.`,
+    category: 'product_quality',
+  });
+
+  // 8. Secure checkout (HTTPS already checked elsewhere, but check for checkout page)
+  const checkoutPatterns = /\/(checkout|commande|paiement|order|panier|cart)/i;
+  const hasCheckoutPage = allUrlsLower.some(u => checkoutPatterns.test(u));
+  checks.push({
+    name: 'Page de paiement sécurisé',
+    found: hasCheckoutPage,
+    detail: hasCheckoutPage
+      ? 'Page de checkout/paiement détectée. Assurez-vous qu\'elle est en HTTPS avec un certificat SSL valide.'
+      : 'Aucune page de paiement détectée. Si vous vendez en ligne, un checkout sécurisé est requis.',
+    category: 'trust',
+  });
+
+  // Calculate compliance score
+  const totalChecks = checks.length;
+  const passedChecks = checks.filter(c => c.found).length;
+  const score = Math.round((passedChecks / totalChecks) * 100);
+
+  // Build recommendations
+  if (missingCritical.length > 0) {
+    recommendations.push(`⚠️ ${missingCritical.length} page(s) requise(s) manquante(s) : ${missingCritical.join(', ')}.`);
+    recommendations.push('Google Merchant Center refusera les produits si ces pages ne sont pas accessibles.');
+  }
+  if (!allHaveImages && products.length > 0) {
+    recommendations.push('📸 Ajoutez des images à tous les produits (min 100x100px, fond blanc recommandé, sans watermark).');
+  }
+  if (!allHavePrices && products.length > 0) {
+    recommendations.push('💰 Assurez-vous que chaque produit a un prix et une devise dans les données structurées, identiques au prix affiché.');
+  }
+  if (score === 100) {
+    recommendations.push('✅ Tous les critères métier détectables sont remplis. Soumettez votre flux produit à Merchant Center.');
+  }
+
+  return { checks, score, missingCritical, recommendations };
 }
 
 // Helper: extract Product JSON-LD from raw HTML

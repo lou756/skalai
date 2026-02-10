@@ -83,6 +83,20 @@ export interface MerchantSignal {
   weight: number;
 }
 
+export interface MerchantComplianceCheck {
+  name: string;
+  found: boolean;
+  detail: string;
+  category: 'policy' | 'product_quality' | 'trust';
+}
+
+export interface MerchantCompliance {
+  checks: MerchantComplianceCheck[];
+  score: number;
+  missingCritical: string[];
+  recommendations: string[];
+}
+
 export interface MerchantAnalysis {
   isProductPage: boolean;
   products: ProductData[];
@@ -92,6 +106,7 @@ export interface MerchantAnalysis {
   merchantSignals: MerchantSignal[];
   merchantConfidence: number;
   productPagesFound: number;
+  compliance: MerchantCompliance | null;
 }
 
 export interface GeneratedFix {
