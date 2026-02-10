@@ -14,16 +14,45 @@ export default function Admin() {
   const navigate = useNavigate();
   const [user, setUser] = useState<any>(null);
   const [loading, setLoading] = useState(true);
+  const [isAdmin, setIsAdmin] = useState(false);
 
   useEffect(() => {
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
-      if (!session) navigate("/auth");
-      else setUser(session.user);
+    const checkAdmin = async (userId: string) => {
+      const { data } = await supabase
+        .from('user_roles')
+        .select('role')
+        .eq('user_id', userId)
+        .eq('role', 'admin')
+        .maybeSingle();
+      return !!data;
+    };
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+      if (!session) {
+        navigate("/auth");
+        return;
+      }
+      setUser(session.user);
+      const admin = await checkAdmin(session.user.id);
+      if (!admin) {
+        navigate("/");
+        return;
+      }
+      setIsAdmin(true);
       setLoading(false);
     });
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      if (!session) navigate("/auth");
-      else setUser(session.user);
+    supabase.auth.getSession().then(async ({ data: { session } }) => {
+      if (!session) {
+        navigate("/auth");
+        return;
+      }
+      setUser(session.user);
+      const admin = await checkAdmin(session.user.id);
+      if (!admin) {
+        navigate("/");
+        return;
+      }
+      setIsAdmin(true);
       setLoading(false);
     });
     return () => subscription.unsubscribe();
