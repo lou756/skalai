@@ -1,6 +1,7 @@
 import { cn } from "@/lib/utils";
 import { useI18n } from "@/lib/i18n";
 import type { ScoreBreakdown } from "@/lib/api/seo";
+import { Radar, RadarChart, PolarGrid, PolarAngleAxis, PolarRadiusAxis, ResponsiveContainer } from "recharts";
 
 interface SEOScoreCardProps {
   score: number;
@@ -30,6 +31,13 @@ export function SEOScoreCard({ score, breakdown }: SEOScoreCardProps) {
     return "bg-destructive";
   };
 
+  const radarData = breakdown?.map(b => ({
+    category: b.category.length > 12 ? b.category.substring(0, 12) + '…' : b.category,
+    fullCategory: b.category,
+    score: Math.round((b.score / b.maxScore) * 100),
+    fullMark: 100,
+  })) || [];
+
   return (
     <div className="glass-card rounded-xl p-6">
       <div className="text-center">
@@ -54,8 +62,39 @@ export function SEOScoreCard({ score, breakdown }: SEOScoreCardProps) {
         <p className={cn("text-sm font-semibold mt-2", getScoreColor())}>{getScoreLabel()}</p>
       </div>
 
+      {/* Radar Chart */}
+      {radarData.length > 0 && (
+        <div className="mt-4 -mx-2">
+          <div className="h-52 sm:h-60">
+            <ResponsiveContainer width="100%" height="100%">
+              <RadarChart cx="50%" cy="50%" outerRadius="70%" data={radarData}>
+                <PolarGrid stroke="hsl(var(--border))" strokeOpacity={0.5} />
+                <PolarAngleAxis
+                  dataKey="category"
+                  tick={{ fontSize: 9, fill: 'hsl(var(--muted-foreground))' }}
+                />
+                <PolarRadiusAxis
+                  angle={30}
+                  domain={[0, 100]}
+                  tick={{ fontSize: 8, fill: 'hsl(var(--muted-foreground))' }}
+                  tickCount={4}
+                />
+                <Radar
+                  name="Score"
+                  dataKey="score"
+                  stroke="hsl(var(--primary))"
+                  fill="hsl(var(--primary))"
+                  fillOpacity={0.2}
+                  strokeWidth={2}
+                />
+              </RadarChart>
+            </ResponsiveContainer>
+          </div>
+        </div>
+      )}
+
       {breakdown && breakdown.length > 0 && (
-        <div className="mt-5 pt-4 border-t border-border/50">
+        <div className="mt-3 pt-4 border-t border-border/50">
           <p className="text-xs font-medium text-muted-foreground mb-3 uppercase tracking-wide">
             {t('score.breakdown')}
           </p>

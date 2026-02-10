@@ -18,6 +18,7 @@ import { ScanMetaBanner } from "./ScanMetaBanner";
 import { CoreWebVitals } from "./CoreWebVitals";
 import { ScanProgressAnimation } from "./ScanProgressAnimation";
 import { GSCMerchantStatus } from "./GSCMerchantStatus";
+import { RedirectSection, SchemaOrgSection } from "./SchemaRedirectSections";
 import { motion } from "framer-motion";
 
 export interface SEOAnalyzerHandle {
@@ -172,7 +173,13 @@ export const SEOAnalyzer = forwardRef<SEOAnalyzerHandle, SEOAnalyzerProps>(
 
             {result.actionReport && <ActionReportSection report={result.actionReport} />}
             {result.generatedFixes && <GeneratedFixes fixes={result.generatedFixes} />}
-            {result.pageSpeed && <CoreWebVitals pageSpeed={result.pageSpeed} />}
+            {result.pageSpeed && <CoreWebVitals pageSpeed={result.pageSpeed} pageSpeedDesktop={result.pageSpeedDesktop} />}
+
+            {/* Redirect Analysis */}
+            {result.redirectAnalysis && <RedirectSection redirectAnalysis={result.redirectAnalysis} />}
+
+            {/* Schema.org Analysis */}
+            {result.schemaOrgAnalysis && <SchemaOrgSection schemaOrgAnalysis={result.schemaOrgAnalysis} />}
 
             {result.issues.length > 0 ? (
               <div className="space-y-4 sm:space-y-6">

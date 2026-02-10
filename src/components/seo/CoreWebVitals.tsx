@@ -1,10 +1,12 @@
-import { Gauge, Zap, Move, Image, Clock, Server, AlertTriangle, CheckCircle2, XCircle } from "lucide-react";
+import { useState } from "react";
+import { Gauge, Zap, Move, Image, Clock, Server, AlertTriangle, CheckCircle2, XCircle, Monitor, Smartphone } from "lucide-react";
 import { useI18n } from "@/lib/i18n";
 import { cn } from "@/lib/utils";
 import type { PageSpeedResult } from "@/lib/api/seo";
 
 interface CoreWebVitalsProps {
   pageSpeed: PageSpeedResult;
+  pageSpeedDesktop?: PageSpeedResult | null;
 }
 
 function getRatingColor(rating: string | null) {
@@ -49,8 +51,86 @@ function getScoreRingColor(score: number | null) {
   return 'stroke-destructive';
 }
 
-export function CoreWebVitals({ pageSpeed }: CoreWebVitalsProps) {
+function PSIPanel({ data, label }: { data: PageSpeedResult; label: string }) {
   const { t } = useI18n();
+
+  const metrics = [
+    { key: 'lcp', label: t('psi.lcp'), icon: Image, data: data.lcp, unit: 's' as const, desc: t('psi.lcpDesc') },
+    { key: 'fcp', label: t('psi.fcp'), icon: Zap, data: data.fcp, unit: 's' as const, desc: t('psi.fcpDesc') },
+    { key: 'tbt', label: t('psi.tbt'), icon: Clock, data: data.tbt, unit: 'ms' as const, desc: t('psi.tbtDesc') },
+    { key: 'cls', label: t('psi.cls'), icon: Move, data: data.cls, unit: 'score' as const, desc: t('psi.clsDesc') },
+    { key: 'si', label: t('psi.si'), icon: Gauge, data: data.si, unit: 's' as const, desc: t('psi.siDesc') },
+    { key: 'ttfb', label: t('psi.ttfb'), icon: Server, data: data.ttfb, unit: 'ms' as const, desc: t('psi.ttfbDesc') },
+  ];
+
+  return (
+    <div>
+      {/* Performance score */}
+      <div className="flex flex-col sm:flex-row items-center gap-4 sm:gap-6 mb-5 sm:mb-6">
+        <div className="relative inline-flex items-center justify-center">
+          <svg className="w-20 h-20 sm:w-24 sm:h-24 -rotate-90" viewBox="0 0 120 120">
+            <circle cx="60" cy="60" r="52" fill="none" stroke="hsl(var(--muted))" strokeWidth="8" />
+            <circle
+              cx="60" cy="60" r="52" fill="none"
+              className={getScoreRingColor(data.performanceScore)}
+              strokeWidth="8"
+              strokeLinecap="round"
+              strokeDasharray={`${((data.performanceScore || 0) / 100) * 327} 327`}
+            />
+          </svg>
+          <div className="absolute inset-0 flex flex-col items-center justify-center">
+            <span className={cn("text-2xl sm:text-3xl font-bold", getScoreColor(data.performanceScore))} style={{ fontFamily: "'Space Grotesk', sans-serif" }}>
+              {data.performanceScore ?? '—'}
+            </span>
+            <span className="text-[10px] sm:text-xs text-muted-foreground">/100</span>
+          </div>
+        </div>
+        <div className="text-center sm:text-left">
+          <p className="text-sm sm:text-base font-semibold text-foreground">{t('psi.performanceScore')}</p>
+          <p className="text-xs sm:text-sm text-muted-foreground mt-1">{label}</p>
+        </div>
+      </div>
+
+      {/* Core Web Vitals grid */}
+      <div className="grid grid-cols-2 lg:grid-cols-3 gap-2.5 sm:gap-3">
+        {metrics.map((m) => (
+          <div key={m.key} className={cn("rounded-lg border p-2.5 sm:p-3", getRatingBg(m.data.rating))}>
+            <div className="flex items-center gap-1.5 mb-1.5">
+              <m.icon className={cn("h-3.5 w-3.5", getRatingColor(m.data.rating))} />
+              <span className="text-[10px] sm:text-xs font-medium text-foreground truncate">{m.label}</span>
+              {getRatingIcon(m.data.rating)}
+            </div>
+            <p className={cn("text-base sm:text-lg font-bold", getRatingColor(m.data.rating))} style={{ fontFamily: "'Space Grotesk', sans-serif" }}>
+              {formatMetric(m.data.value, m.unit)}
+            </p>
+            <p className="text-[9px] sm:text-[10px] text-muted-foreground leading-tight mt-1">{m.desc}</p>
+          </div>
+        ))}
+      </div>
+
+      {/* Diagnostics */}
+      {data.diagnostics && data.diagnostics.length > 0 && (
+        <div className="mt-4 sm:mt-5 pt-4 border-t border-border/30">
+          <p className="text-xs font-medium text-muted-foreground mb-2.5 uppercase tracking-wide">
+            {t('psi.diagnostics')}
+          </p>
+          <div className="space-y-1.5">
+            {data.diagnostics.map((d, i) => (
+              <div key={i} className="flex items-start gap-2 text-xs sm:text-sm">
+                <AlertTriangle className={cn("h-3.5 w-3.5 shrink-0 mt-0.5", d.score !== null && d.score >= 0.5 ? 'text-amber-500' : 'text-destructive')} />
+                <span className="text-foreground">{d.title}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+export function CoreWebVitals({ pageSpeed, pageSpeedDesktop }: CoreWebVitalsProps) {
+  const { t } = useI18n();
+  const [activeTab, setActiveTab] = useState<'mobile' | 'desktop'>('mobile');
 
   if (pageSpeed.error && pageSpeed.performanceScore === null) {
     return (
@@ -68,14 +148,7 @@ export function CoreWebVitals({ pageSpeed }: CoreWebVitalsProps) {
     );
   }
 
-  const metrics = [
-    { key: 'lcp', label: t('psi.lcp'), icon: Image, data: pageSpeed.lcp, unit: 's' as const, desc: t('psi.lcpDesc') },
-    { key: 'fcp', label: t('psi.fcp'), icon: Zap, data: pageSpeed.fcp, unit: 's' as const, desc: t('psi.fcpDesc') },
-    { key: 'tbt', label: t('psi.tbt'), icon: Clock, data: pageSpeed.tbt, unit: 'ms' as const, desc: t('psi.tbtDesc') },
-    { key: 'cls', label: t('psi.cls'), icon: Move, data: pageSpeed.cls, unit: 'score' as const, desc: t('psi.clsDesc') },
-    { key: 'si', label: t('psi.si'), icon: Gauge, data: pageSpeed.si, unit: 's' as const, desc: t('psi.siDesc') },
-    { key: 'ttfb', label: t('psi.ttfb'), icon: Server, data: pageSpeed.ttfb, unit: 'ms' as const, desc: t('psi.ttfbDesc') },
-  ];
+  const hasDesktop = pageSpeedDesktop && pageSpeedDesktop.performanceScore !== null;
 
   return (
     <div className="space-y-3 sm:space-y-4">
@@ -90,65 +163,47 @@ export function CoreWebVitals({ pageSpeed }: CoreWebVitalsProps) {
       </div>
 
       <div className="glass-card rounded-xl p-4 sm:p-6">
-        {/* Performance score */}
-        <div className="flex flex-col sm:flex-row items-center gap-4 sm:gap-6 mb-5 sm:mb-6">
-          <div className="relative inline-flex items-center justify-center">
-            <svg className="w-20 h-20 sm:w-24 sm:h-24 -rotate-90" viewBox="0 0 120 120">
-              <circle cx="60" cy="60" r="52" fill="none" stroke="hsl(var(--muted))" strokeWidth="8" />
-              <circle
-                cx="60" cy="60" r="52" fill="none"
-                className={getScoreRingColor(pageSpeed.performanceScore)}
-                strokeWidth="8"
-                strokeLinecap="round"
-                strokeDasharray={`${((pageSpeed.performanceScore || 0) / 100) * 327} 327`}
-              />
-            </svg>
-            <div className="absolute inset-0 flex flex-col items-center justify-center">
-              <span className={cn("text-2xl sm:text-3xl font-bold", getScoreColor(pageSpeed.performanceScore))} style={{ fontFamily: "'Space Grotesk', sans-serif" }}>
-                {pageSpeed.performanceScore ?? '—'}
-              </span>
-              <span className="text-[10px] sm:text-xs text-muted-foreground">/100</span>
-            </div>
-          </div>
-          <div className="text-center sm:text-left">
-            <p className="text-sm sm:text-base font-semibold text-foreground">{t('psi.performanceScore')}</p>
-            <p className="text-xs sm:text-sm text-muted-foreground mt-1">{t('psi.mobileStrategy')}</p>
-          </div>
-        </div>
-
-        {/* Core Web Vitals grid */}
-        <div className="grid grid-cols-2 lg:grid-cols-3 gap-2.5 sm:gap-3">
-          {metrics.map((m) => (
-            <div key={m.key} className={cn("rounded-lg border p-2.5 sm:p-3", getRatingBg(m.data.rating))}>
-              <div className="flex items-center gap-1.5 mb-1.5">
-                <m.icon className={cn("h-3.5 w-3.5", getRatingColor(m.data.rating))} />
-                <span className="text-[10px] sm:text-xs font-medium text-foreground truncate">{m.label}</span>
-                {getRatingIcon(m.data.rating)}
-              </div>
-              <p className={cn("text-base sm:text-lg font-bold", getRatingColor(m.data.rating))} style={{ fontFamily: "'Space Grotesk', sans-serif" }}>
-                {formatMetric(m.data.value, m.unit)}
-              </p>
-              <p className="text-[9px] sm:text-[10px] text-muted-foreground leading-tight mt-1">{m.desc}</p>
-            </div>
-          ))}
-        </div>
-
-        {/* Diagnostics */}
-        {pageSpeed.diagnostics && pageSpeed.diagnostics.length > 0 && (
-          <div className="mt-4 sm:mt-5 pt-4 border-t border-border/30">
-            <p className="text-xs font-medium text-muted-foreground mb-2.5 uppercase tracking-wide">
-              {t('psi.diagnostics')}
-            </p>
-            <div className="space-y-1.5">
-              {pageSpeed.diagnostics.map((d, i) => (
-                <div key={i} className="flex items-start gap-2 text-xs sm:text-sm">
-                  <AlertTriangle className={cn("h-3.5 w-3.5 shrink-0 mt-0.5", d.score !== null && d.score >= 0.5 ? 'text-amber-500' : 'text-destructive')} />
-                  <span className="text-foreground">{d.title}</span>
-                </div>
-              ))}
-            </div>
+        {/* Tabs mobile/desktop */}
+        {hasDesktop && (
+          <div className="flex gap-1 mb-5 bg-muted/50 rounded-lg p-1 w-fit">
+            <button
+              onClick={() => setActiveTab('mobile')}
+              className={cn(
+                "flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-colors",
+                activeTab === 'mobile' ? "bg-background text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"
+              )}
+            >
+              <Smartphone className="h-3.5 w-3.5" />
+              Mobile
+              {pageSpeed.performanceScore !== null && (
+                <span className={cn("font-bold", getScoreColor(pageSpeed.performanceScore))}>
+                  {pageSpeed.performanceScore}
+                </span>
+              )}
+            </button>
+            <button
+              onClick={() => setActiveTab('desktop')}
+              className={cn(
+                "flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-colors",
+                activeTab === 'desktop' ? "bg-background text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"
+              )}
+            >
+              <Monitor className="h-3.5 w-3.5" />
+              Desktop
+              {pageSpeedDesktop?.performanceScore !== null && pageSpeedDesktop?.performanceScore !== undefined && (
+                <span className={cn("font-bold", getScoreColor(pageSpeedDesktop.performanceScore))}>
+                  {pageSpeedDesktop.performanceScore}
+                </span>
+              )}
+            </button>
           </div>
         )}
+
+        {activeTab === 'mobile' ? (
+          <PSIPanel data={pageSpeed} label={t('psi.mobileStrategy')} />
+        ) : hasDesktop ? (
+          <PSIPanel data={pageSpeedDesktop!} label="Desktop strategy" />
+        ) : null}
 
         {pageSpeed.fetchedAt && (
           <p className="text-[9px] sm:text-[10px] text-muted-foreground mt-3 pt-3 border-t border-border/30">

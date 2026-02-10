@@ -111,6 +111,27 @@ interface PageSpeedResult {
   error: string | null;
 }
 
+interface RedirectInfo {
+  url: string;
+  statusCode: number;
+  redirectsTo: string;
+}
+
+interface RedirectAnalysis {
+  chain: RedirectInfo[];
+  finalUrl: string;
+  totalRedirects: number;
+  hasRedirectLoop: boolean;
+  issues: string[];
+}
+
+interface SchemaOrgAnalysis {
+  types: { type: string; valid: boolean; issues: string[] }[];
+  totalFound: number;
+  validCount: number;
+  recommendations: string[];
+}
+
 interface SEOAnalysisResult {
   url: string;
   score: number;
@@ -148,6 +169,7 @@ interface SEOAnalysisResult {
     hasViewportMeta: boolean;
   };
   pageSpeed: PageSpeedResult | null;
+  pageSpeedDesktop: PageSpeedResult | null;
   brokenLinks: BrokenLink[];
   gscInstructions: string[];
   contentAnalysis: ContentAnalysis;
@@ -155,6 +177,8 @@ interface SEOAnalysisResult {
   merchantAnalysis: MerchantAnalysis;
   generatedFixes: GeneratedFix[];
   actionReport: ActionReport;
+  redirectAnalysis: RedirectAnalysis;
+  schemaOrgAnalysis: SchemaOrgAnalysis;
 }
 
 Deno.serve(async (req) => {
@@ -224,13 +248,15 @@ Deno.serve(async (req) => {
 
     const meta = extractMetaInfo(html, metadata);
     
-    // Run parallel fetches
-    const [robotsTxt, pageSpeed, securityHeaders] = await Promise.all([
-      checkRobotsTxt(formattedUrl, apiKey),
-      fetchPageSpeedInsights(formattedUrl),
+    // Run parallel fetches - robots.txt now via direct fetch, PSI mobile+desktop, redirects, security
+    const [robotsTxt, pageSpeed, pageSpeedDesktop, securityHeaders, redirectAnalysis] = await Promise.all([
+      checkRobotsTxt(formattedUrl),
+      fetchPageSpeedInsights(formattedUrl, 'mobile'),
+      fetchPageSpeedInsights(formattedUrl, 'desktop'),
       checkSecurityHeaders(formattedUrl),
+      analyzeRedirects(formattedUrl),
     ]);
-    const sitemap = await checkSitemap(formattedUrl, robotsTxt.content, apiKey);
+    const sitemap = await checkSitemap(formattedUrl, robotsTxt.content);
     const performance = extractPerformanceInfo(html);
     const brokenLinks = await checkBrokenLinks(links.slice(0, 30));
     const gscInstructions = generateGSCInstructions(formattedUrl, sitemap, robotsTxt);
@@ -239,13 +265,14 @@ Deno.serve(async (req) => {
     const merchantAnalysis = analyzeMerchantData(html);
     const imageAnalysis = analyzeImages(html);
     const headingAnalysis = analyzeHeadingHierarchy(html);
+    const schemaOrgAnalysis = analyzeSchemaOrg(html);
     
-    const issues = generateIssues(meta, robotsTxt, sitemap, performance, formattedUrl, brokenLinks, contentAnalysis, hreflangAnalysis, merchantAnalysis, imageAnalysis, headingAnalysis, securityHeaders, pageSpeed);
+    const issues = generateIssues(meta, robotsTxt, sitemap, performance, formattedUrl, brokenLinks, contentAnalysis, hreflangAnalysis, merchantAnalysis, imageAnalysis, headingAnalysis, securityHeaders, pageSpeed, redirectAnalysis, schemaOrgAnalysis);
     
-    // NEW: Weighted positive scoring system
+    // Weighted positive scoring system
     const { score, breakdown } = calculateWeightedScore(meta, robotsTxt, sitemap, performance, brokenLinks, contentAnalysis, hreflangAnalysis, merchantAnalysis, issues, pageSpeed, imageAnalysis, headingAnalysis, securityHeaders);
     
-    // NEW: Confidence indicators
+    // Confidence indicators
     const confidence = buildConfidenceIndicators(html, meta, robotsTxt, sitemap, contentAnalysis, merchantAnalysis, allSiteUrls.length);
 
     // Generate autonomous fixes - use ALL discovered URLs for sitemap
@@ -258,30 +285,34 @@ Deno.serve(async (req) => {
     // Count elements checked
     const elementsChecked = 
       13 + // meta checks
-      (links.slice(0, 30).length) + // links checked (increased to 30)
+      (links.slice(0, 30).length) + // links checked
       (contentAnalysis.keywordDensity.length) + // keywords analyzed
       (merchantAnalysis.products.length * 12) + // product fields per product
       (allSiteUrls.length > 0 ? 1 : 0) + // URL discovery
       (imageAnalysis.total) + // images analyzed
       (headingAnalysis.total) + // headings analyzed
       4 + // security headers
-      2; // robots.txt + sitemap
+      2 + // robots.txt + sitemap
+      (schemaOrgAnalysis.totalFound) + // schema.org types checked
+      (redirectAnalysis.totalRedirects > 0 ? redirectAnalysis.chain.length : 1); // redirect checks
 
     const scanMeta: ScanMeta = {
       scannedAt: new Date().toISOString(),
       durationMs,
       pagesCrawled: allSiteUrls.length || 1,
       elementsChecked,
-      engine: 'SKAL IA v3.0',
+      engine: 'SKAL IA v4.0',
       sources: [
         'Firecrawl Web Scraping API',
         'Firecrawl Map API (URL discovery)',
-        'Google PageSpeed Insights API (Core Web Vitals)',
-        'Direct HTTP requests (robots.txt, sitemap, broken links, security headers)',
+        'Google PageSpeed Insights API (Mobile + Desktop)',
+        'Direct HTTP requests (robots.txt, sitemap, broken links, security headers, redirects)',
         'Lovable AI Gateway (Gemini - content suggestions)',
         'Image accessibility analysis (alt text)',
         'Heading hierarchy analysis (H1-H6)',
         'Security headers audit (HTTPS, HSTS, CSP, X-Frame-Options)',
+        'Redirect chain analysis (301/302)',
+        'Schema.org validation (Organization, LocalBusiness, Article, FAQ, BreadcrumbList, Product, WebSite)',
       ],
     };
 
@@ -297,6 +328,7 @@ Deno.serve(async (req) => {
       robotsTxt,
       performance,
       pageSpeed,
+      pageSpeedDesktop,
       brokenLinks,
       gscInstructions,
       contentAnalysis,
@@ -304,9 +336,11 @@ Deno.serve(async (req) => {
       merchantAnalysis,
       generatedFixes,
       actionReport,
+      redirectAnalysis,
+      schemaOrgAnalysis,
     };
 
-    console.log('Analysis complete. Score:', score, 'Duration:', durationMs, 'ms, Fixes:', generatedFixes.length, 'URLs:', allSiteUrls.length);
+    console.log('Analysis complete. Score:', score, 'Duration:', durationMs, 'ms, Fixes:', generatedFixes.length, 'URLs:', allSiteUrls.length, 'Schema types:', schemaOrgAnalysis.totalFound, 'Redirects:', redirectAnalysis.totalRedirects);
 
     return new Response(
       JSON.stringify({ success: true, data: result }),
@@ -352,6 +386,285 @@ async function discoverAllUrls(url: string, apiKey: string): Promise<string[]> {
   }
 }
 
+// ─── Redirect Chain Analysis ─────────────────────────────────────────
+
+async function analyzeRedirects(url: string): Promise<RedirectAnalysis> {
+  const chain: RedirectInfo[] = [];
+  const visited = new Set<string>();
+  let currentUrl = url;
+  let hasRedirectLoop = false;
+  const issues: string[] = [];
+
+  try {
+    for (let i = 0; i < 10; i++) {
+      if (visited.has(currentUrl)) {
+        hasRedirectLoop = true;
+        issues.push(`Redirect loop detected at ${currentUrl}`);
+        break;
+      }
+      visited.add(currentUrl);
+
+      const response = await fetch(currentUrl, {
+        method: 'HEAD',
+        redirect: 'manual',
+        signal: AbortSignal.timeout(8000),
+      });
+
+      if (response.status >= 300 && response.status < 400) {
+        const location = response.headers.get('location');
+        if (!location) break;
+
+        const resolvedUrl = location.startsWith('http') ? location : new URL(location, currentUrl).href;
+        
+        chain.push({
+          url: currentUrl,
+          statusCode: response.status,
+          redirectsTo: resolvedUrl,
+        });
+
+        currentUrl = resolvedUrl;
+      } else {
+        break;
+      }
+    }
+
+    // Analyze chain issues
+    if (chain.length > 2) {
+      issues.push(`Long redirect chain (${chain.length} redirects). This slows crawling and wastes crawl budget.`);
+    }
+
+    const has302 = chain.some(r => r.statusCode === 302);
+    if (has302) {
+      issues.push('Temporary redirect (302) detected. Use 301 for permanent redirects to pass full SEO value.');
+    }
+
+    // Check HTTP→HTTPS redirect
+    if (url.startsWith('http://')) {
+      const httpsVersion = url.replace('http://', 'https://');
+      const hasHttpsRedirect = chain.some(r => r.redirectsTo.startsWith('https://'));
+      if (!hasHttpsRedirect) {
+        issues.push('No HTTP to HTTPS redirect detected. This is critical for security and SEO.');
+      }
+    }
+
+    // Check www vs non-www consistency
+    const urlObj = new URL(url);
+    const isWww = urlObj.hostname.startsWith('www.');
+    if (chain.length > 0) {
+      const finalHost = new URL(currentUrl).hostname;
+      const finalIsWww = finalHost.startsWith('www.');
+      if (isWww !== finalIsWww) {
+        // This is fine, just note it
+      }
+    }
+
+  } catch (error) {
+    console.error('Error analyzing redirects:', error);
+    issues.push('Could not fully analyze redirect chain.');
+  }
+
+  return {
+    chain,
+    finalUrl: currentUrl,
+    totalRedirects: chain.length,
+    hasRedirectLoop,
+    issues,
+  };
+}
+
+// ─── Extended Schema.org Validation ──────────────────────────────────
+
+function analyzeSchemaOrg(html: string): SchemaOrgAnalysis {
+  const types: SchemaOrgAnalysis['types'] = [];
+  const recommendations: string[] = [];
+
+  const jsonLdRegex = /<script[^>]*type=["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/gi;
+  let match;
+  const allSchemas: { type: string; data: Record<string, unknown> }[] = [];
+
+  while ((match = jsonLdRegex.exec(html)) !== null) {
+    try {
+      const jsonData = JSON.parse(match[1]);
+      const items = Array.isArray(jsonData) ? jsonData : jsonData['@graph'] ? jsonData['@graph'] : [jsonData];
+      
+      for (const item of items) {
+        const itemType = item['@type'];
+        if (!itemType) continue;
+        const typeStr = Array.isArray(itemType) ? itemType.join(', ') : itemType;
+        allSchemas.push({ type: typeStr, data: item });
+      }
+    } catch (e) {
+      types.push({ type: 'Invalid JSON-LD', valid: false, issues: ['JSON-LD parsing error: malformed JSON'] });
+    }
+  }
+
+  // Validate each schema type
+  const validatorMap: Record<string, (data: Record<string, unknown>) => string[]> = {
+    'Organization': validateOrganization,
+    'LocalBusiness': validateLocalBusiness,
+    'Article': validateArticle,
+    'NewsArticle': validateArticle,
+    'BlogPosting': validateArticle,
+    'FAQPage': validateFAQ,
+    'BreadcrumbList': validateBreadcrumb,
+    'Product': validateProduct,
+    'WebSite': validateWebSite,
+    'WebPage': validateWebPage,
+  };
+
+  for (const schema of allSchemas) {
+    const schemaTypes = schema.type.split(', ');
+    for (const sType of schemaTypes) {
+      const validator = validatorMap[sType];
+      if (validator) {
+        const issues = validator(schema.data);
+        types.push({ type: sType, valid: issues.length === 0, issues });
+      } else {
+        types.push({ type: sType, valid: true, issues: [] });
+      }
+    }
+  }
+
+  // Check for missing recommended schemas
+  const foundTypes = new Set(allSchemas.map(s => s.type));
+  
+  if (!foundTypes.has('WebSite') && !allSchemas.some(s => s.type.includes('WebSite'))) {
+    recommendations.push('Add WebSite schema with SearchAction for sitelinks search box in Google.');
+  }
+  
+  const hasOrgOrBiz = allSchemas.some(s => s.type.includes('Organization') || s.type.includes('LocalBusiness'));
+  if (!hasOrgOrBiz) {
+    recommendations.push('Add Organization or LocalBusiness schema for Knowledge Panel eligibility.');
+  }
+
+  // Check for BreadcrumbList based on URL depth
+  const hasBreadcrumb = allSchemas.some(s => s.type.includes('BreadcrumbList'));
+  if (!hasBreadcrumb) {
+    recommendations.push('Add BreadcrumbList schema for enhanced breadcrumb display in search results.');
+  }
+
+  // Check microdata and RDFa as well
+  const hasMicrodata = /itemscope\s+itemtype=/i.test(html);
+  if (hasMicrodata && allSchemas.length === 0) {
+    recommendations.push('Microdata detected but no JSON-LD found. Consider migrating to JSON-LD for better maintainability.');
+  }
+
+  const validCount = types.filter(t => t.valid).length;
+
+  return {
+    types,
+    totalFound: types.length,
+    validCount,
+    recommendations,
+  };
+}
+
+function validateOrganization(data: Record<string, unknown>): string[] {
+  const issues: string[] = [];
+  if (!data.name) issues.push('Missing "name" (required)');
+  if (!data.url) issues.push('Missing "url" (recommended)');
+  if (!data.logo) issues.push('Missing "logo" (recommended for Knowledge Panel)');
+  if (!data.contactPoint && !data.telephone) issues.push('Missing "contactPoint" (recommended)');
+  if (!data.sameAs) issues.push('Missing "sameAs" (social profiles, recommended)');
+  return issues;
+}
+
+function validateLocalBusiness(data: Record<string, unknown>): string[] {
+  const issues = validateOrganization(data);
+  if (!data.address) issues.push('Missing "address" (required for LocalBusiness)');
+  if (!data.geo) issues.push('Missing "geo" coordinates (recommended for Google Maps)');
+  if (!data.openingHours && !data.openingHoursSpecification) issues.push('Missing "openingHours" (recommended)');
+  if (!data.priceRange) issues.push('Missing "priceRange" (recommended)');
+  return issues;
+}
+
+function validateArticle(data: Record<string, unknown>): string[] {
+  const issues: string[] = [];
+  if (!data.headline) issues.push('Missing "headline" (required)');
+  if (!data.author) issues.push('Missing "author" (required)');
+  if (!data.datePublished) issues.push('Missing "datePublished" (required)');
+  if (!data.image) issues.push('Missing "image" (required for rich results)');
+  if (!data.publisher) issues.push('Missing "publisher" (required)');
+  if (!data.dateModified) issues.push('Missing "dateModified" (recommended)');
+  if (!data.description) issues.push('Missing "description" (recommended)');
+  if (data.headline && typeof data.headline === 'string' && data.headline.length > 110) {
+    issues.push(`"headline" too long (${data.headline.length} chars, max 110)`);
+  }
+  return issues;
+}
+
+function validateFAQ(data: Record<string, unknown>): string[] {
+  const issues: string[] = [];
+  const mainEntity = data.mainEntity as unknown[];
+  if (!mainEntity || !Array.isArray(mainEntity) || mainEntity.length === 0) {
+    issues.push('Missing "mainEntity" array with Question items');
+    return issues;
+  }
+  for (let i = 0; i < Math.min(mainEntity.length, 5); i++) {
+    const q = mainEntity[i] as Record<string, unknown>;
+    if (!q.name && !q.text) issues.push(`Q${i + 1}: Missing question text ("name")`);
+    const answer = q.acceptedAnswer as Record<string, unknown>;
+    if (!answer?.text) issues.push(`Q${i + 1}: Missing answer text ("acceptedAnswer.text")`);
+  }
+  return issues;
+}
+
+function validateBreadcrumb(data: Record<string, unknown>): string[] {
+  const issues: string[] = [];
+  const items = data.itemListElement as unknown[];
+  if (!items || !Array.isArray(items) || items.length === 0) {
+    issues.push('Missing "itemListElement" array');
+    return issues;
+  }
+  for (let i = 0; i < items.length; i++) {
+    const item = items[i] as Record<string, unknown>;
+    if (!item.name && !(item.item as Record<string, unknown>)?.name) {
+      issues.push(`Breadcrumb item ${i + 1}: Missing "name"`);
+    }
+    if (item.position === undefined) {
+      issues.push(`Breadcrumb item ${i + 1}: Missing "position"`);
+    }
+  }
+  return issues;
+}
+
+function validateProduct(data: Record<string, unknown>): string[] {
+  const issues: string[] = [];
+  if (!data.name) issues.push('Missing "name" (required)');
+  if (!data.image) issues.push('Missing "image" (required)');
+  if (!data.offers) issues.push('Missing "offers" (required for price display)');
+  else {
+    const offers = (Array.isArray(data.offers) ? data.offers[0] : data.offers) as Record<string, unknown>;
+    if (!offers?.price) issues.push('Missing "offers.price" (required)');
+    if (!offers?.priceCurrency) issues.push('Missing "offers.priceCurrency" (required)');
+    if (!offers?.availability) issues.push('Missing "offers.availability" (required)');
+  }
+  if (!data.description) issues.push('Missing "description" (recommended)');
+  if (!data.brand) issues.push('Missing "brand" (recommended)');
+  if (!data.sku && !data.gtin && !data.gtin13 && !data.mpn) {
+    issues.push('Missing product identifier (sku, gtin, or mpn recommended)');
+  }
+  if (!data.aggregateRating && !data.review) {
+    issues.push('Missing "aggregateRating" or "review" (recommended for star display)');
+  }
+  return issues;
+}
+
+function validateWebSite(data: Record<string, unknown>): string[] {
+  const issues: string[] = [];
+  if (!data.name) issues.push('Missing "name" (required)');
+  if (!data.url) issues.push('Missing "url" (required)');
+  if (!data.potentialAction) issues.push('Missing "potentialAction" (recommended for sitelinks search)');
+  return issues;
+}
+
+function validateWebPage(data: Record<string, unknown>): string[] {
+  const issues: string[] = [];
+  if (!data.name && !data.headline) issues.push('Missing "name" or "headline"');
+  if (!data.description) issues.push('Missing "description" (recommended)');
+  return issues;
+}
+
 // ─── Weighted Positive Scoring ───────────────────────────────────────
 
 function calculateWeightedScore(
@@ -375,7 +688,7 @@ function calculateWeightedScore(
   let metaScore = 0;
   const metaMax = 20;
   if (meta.title) {
-    metaScore += meta.title.length <= 60 ? 8 : 5; // full points if optimal length
+    metaScore += meta.title.length <= 60 ? 8 : 5;
   }
   if (meta.description) {
     metaScore += meta.description.length <= 160 && meta.description.length >= 50 ? 7 : 4;
@@ -434,18 +747,16 @@ function calculateWeightedScore(
     details: `Open Graph: ${meta.hasOgTags ? '✓' : '✗'} | Twitter Cards: ${meta.hasTwitterCards ? '✓' : '✗'}`,
   });
 
-  // 5. Mobile & Performance (15 points max) - now includes PageSpeed
+  // 5. Mobile & Performance (15 points max) - includes PageSpeed
   let perfScore = 0;
   const perfMax = 15;
   if (performance.hasViewportMeta) perfScore += 4;
   if (performance.hasLazyLoading) perfScore += 2;
-  // Integrate real PageSpeed score
   if (pageSpeed.performanceScore !== null) {
     if (pageSpeed.performanceScore >= 90) perfScore += 9;
     else if (pageSpeed.performanceScore >= 50) perfScore += 5;
     else if (pageSpeed.performanceScore >= 25) perfScore += 2;
   } else {
-    // If PSI unavailable, give partial credit for having viewport/lazy
     perfScore += 4;
   }
   const psiLabel = pageSpeed.performanceScore !== null ? `PSI: ${pageSpeed.performanceScore}/100` : 'PSI: N/A';
@@ -534,7 +845,6 @@ function buildConfidenceIndicators(
 ): ConfidenceIndicator[] {
   const indicators: ConfidenceIndicator[] = [];
 
-  // HTML analysis confidence
   indicators.push({
     aspect: 'HTML Analysis',
     level: html.length > 500 ? 'verified' : html.length > 0 ? 'partial' : 'uncertain',
@@ -545,23 +855,20 @@ function buildConfidenceIndicators(
         : 'HTML could not be retrieved. Results may be inaccurate.',
   });
 
-  // Meta tags confidence
   indicators.push({
     aspect: 'Meta Tags',
     level: 'verified',
     detail: 'Meta tags are extracted directly from HTML source code.',
   });
 
-  // robots.txt confidence
   indicators.push({
     aspect: 'robots.txt',
     level: robotsTxt.found ? 'verified' : 'verified',
     detail: robotsTxt.found
-      ? 'robots.txt retrieved and parsed successfully.'
+      ? 'robots.txt retrieved via direct HTTP fetch.'
       : 'robots.txt not found at standard location (/robots.txt).',
   });
 
-  // Sitemap confidence
   indicators.push({
     aspect: 'Sitemap',
     level: sitemap.found ? 'verified' : 'verified',
@@ -570,7 +877,6 @@ function buildConfidenceIndicators(
       : 'No sitemap found at /sitemap.xml or in robots.txt.',
   });
 
-  // URL discovery confidence
   indicators.push({
     aspect: 'URL Discovery',
     level: mappedUrlCount > 0 ? 'verified' : 'partial',
@@ -579,7 +885,6 @@ function buildConfidenceIndicators(
       : 'URL discovery limited to links found on analyzed page.',
   });
 
-  // Content analysis confidence
   indicators.push({
     aspect: 'Content Analysis',
     level: contentAnalysis.wordCount > 50 ? 'verified' : 'partial',
@@ -588,7 +893,6 @@ function buildConfidenceIndicators(
       : 'Very little text content found. Page may rely on JavaScript rendering.',
   });
 
-  // AI suggestions confidence
   indicators.push({
     aspect: 'AI Suggestions',
     level: contentAnalysis.suggestions.title ? 'partial' : 'not_checked',
@@ -597,7 +901,6 @@ function buildConfidenceIndicators(
       : 'AI suggestions could not be generated.',
   });
 
-  // Merchant analysis confidence
   if (merchantAnalysis.isProductPage) {
     indicators.push({
       aspect: 'Merchant Analysis',
@@ -608,11 +911,28 @@ function buildConfidenceIndicators(
     });
   }
 
-  // Broken links confidence
   indicators.push({
     aspect: 'Broken Links',
     level: 'partial',
-    detail: 'Only the first 15 links are checked. Some links may timeout without being truly broken.',
+    detail: 'First 30 links checked via HEAD requests. Some may timeout without being truly broken.',
+  });
+
+  indicators.push({
+    aspect: 'PageSpeed Insights',
+    level: 'verified',
+    detail: 'Mobile and Desktop performance scores fetched from Google PageSpeed Insights API in real-time.',
+  });
+
+  indicators.push({
+    aspect: 'Redirect Analysis',
+    level: 'verified',
+    detail: 'Redirect chains followed manually via HTTP HEAD requests (up to 10 hops).',
+  });
+
+  indicators.push({
+    aspect: 'Schema.org Validation',
+    level: 'verified',
+    detail: 'JSON-LD structured data parsed and validated against Schema.org requirements.',
   });
 
   return indicators;
@@ -733,7 +1053,6 @@ function generateOptimizedRobotsTxt(domain: string, current: { found: boolean; c
 }
 
 function generateSitemapXml(domain: string, links: string[]): string {
-  // Deduplicate and clean URLs
   const uniqueLinks = [...new Set([domain + '/', ...links])].filter(l => {
     try {
       new URL(l);
@@ -931,24 +1250,35 @@ function extractMetaInfo(html: string, metadata: Record<string, unknown>) {
   return { title, description, canonical, robots, language, hreflang, hasH1, h1Count, hasOgTags, hasTwitterCards };
 }
 
-async function checkRobotsTxt(url: string, apiKey: string) {
+// Direct HTTP fetch for robots.txt (no Firecrawl API call needed)
+async function checkRobotsTxt(url: string) {
   try {
     const urlObj = new URL(url);
     const robotsUrl = `${urlObj.protocol}//${urlObj.host}/robots.txt`;
     
-    const response = await fetch('https://api.firecrawl.dev/v1/scrape', {
-      method: 'POST',
-      headers: { 'Authorization': `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ url: robotsUrl, formats: ['markdown'], onlyMainContent: false }),
+    const response = await fetch(robotsUrl, {
+      signal: AbortSignal.timeout(10000),
+      headers: { 'User-Agent': 'SKAL-IA-Bot/4.0' },
     });
 
-    const data = await response.json();
-    
-    if (!response.ok || !data.success) {
-      return { found: false, content: null, blocksGooglebot: false, error: 'robots.txt not found' };
+    if (!response.ok) {
+      return { found: false, content: null, blocksGooglebot: false, error: `HTTP ${response.status}` };
     }
 
-    const content = data.data?.markdown || data.markdown || '';
+    const contentType = response.headers.get('content-type') || '';
+    // Make sure it's actually a text file, not an HTML error page
+    if (contentType.includes('text/html')) {
+      return { found: false, content: null, blocksGooglebot: false, error: 'robots.txt returns HTML (likely a 404 page)' };
+    }
+
+    const content = await response.text();
+    
+    // Validate it looks like a real robots.txt
+    const looksValid = /user-agent/i.test(content) || /disallow/i.test(content) || /allow/i.test(content) || /sitemap/i.test(content);
+    if (!looksValid && content.length > 0) {
+      return { found: false, content: null, blocksGooglebot: false, error: 'File does not appear to be a valid robots.txt' };
+    }
+
     const blocksGooglebot = /User-agent:\s*\*[\s\S]*?Disallow:\s*\/(?!\S)/i.test(content) ||
                             /User-agent:\s*Googlebot[\s\S]*?Disallow:\s*\/(?!\S)/i.test(content);
 
@@ -959,7 +1289,7 @@ async function checkRobotsTxt(url: string, apiKey: string) {
   }
 }
 
-async function checkSitemap(url: string, robotsContent: string | null, apiKey: string) {
+async function checkSitemap(url: string, robotsContent: string | null) {
   try {
     const urlObj = new URL(url);
     let sitemapUrl = `${urlObj.protocol}//${urlObj.host}/sitemap.xml`;
@@ -969,7 +1299,7 @@ async function checkSitemap(url: string, robotsContent: string | null, apiKey: s
       if (sitemapMatch) sitemapUrl = sitemapMatch[1];
     }
 
-    const response = await fetch(sitemapUrl);
+    const response = await fetch(sitemapUrl, { signal: AbortSignal.timeout(10000) });
     
     if (!response.ok) {
       return { found: false, url: null, error: 'Sitemap not found', isValid: false, urlCount: null };
@@ -1047,7 +1377,6 @@ async function analyzeContent(
     }
   });
   
-  // Use industry-standard SEO keywords for density analysis
   const keywordDensity = Object.entries(wordFrequency)
     .map(([keyword, count]) => ({ keyword, count, density: Math.round((count / wordCount) * 1000) / 10 }))
     .sort((a, b) => b.count - a.count)
@@ -1288,7 +1617,9 @@ function generateIssues(
   imageAnalysis: { total: number; withoutAlt: number; withoutAlt_list: string[] },
   headingAnalysis: { total: number; hierarchy: string[]; issues: string[] },
   securityHeaders: { https: boolean; hsts: boolean; xFrameOptions: boolean; csp: boolean; xContentType: boolean },
-  pageSpeed: PageSpeedResult
+  pageSpeed: PageSpeedResult,
+  redirectAnalysis: RedirectAnalysis,
+  schemaOrgAnalysis: SchemaOrgAnalysis
 ): SEOIssue[] {
   const issues: SEOIssue[] = [];
   let issueId = 1;
@@ -1407,6 +1738,36 @@ function generateIssues(
     issues.push({ id: `issue-${issueId++}`, issue: 'Poor CLS (Cumulative Layout Shift)', impact: `CLS: ${pageSpeed.cls.value?.toFixed(3) ?? 'N/A'}. Should be under 0.1.`, fix: 'Set explicit dimensions on images/videos, avoid inserting content above existing content.', priority: 'High', category: 'Performance', fixType: 'manual' });
   }
 
+  // Redirect issues
+  if (redirectAnalysis.hasRedirectLoop) {
+    issues.push({ id: `issue-${issueId++}`, issue: 'Redirect loop detected', impact: 'Crawlers cannot reach the page. Users see an error.', fix: 'Fix the redirect configuration to eliminate the loop.', priority: 'High', category: 'Crawling', fixType: 'manual' });
+  }
+  if (redirectAnalysis.totalRedirects > 2) {
+    issues.push({ id: `issue-${issueId++}`, issue: `Long redirect chain (${redirectAnalysis.totalRedirects} redirects)`, impact: 'Each redirect adds latency and wastes crawl budget.', fix: 'Reduce to a single redirect from origin to final destination.', priority: 'Medium', category: 'Crawling', fixType: 'manual' });
+  }
+  const has302 = redirectAnalysis.chain.some(r => r.statusCode === 302);
+  if (has302) {
+    issues.push({ id: `issue-${issueId++}`, issue: 'Temporary redirect (302) used instead of 301', impact: '302 redirects do not pass full link equity to the destination.', fix: 'Change to 301 (permanent) redirect if the move is permanent.', priority: 'Medium', category: 'Technical SEO', fixType: 'manual' });
+  }
+
+  // Schema.org issues
+  schemaOrgAnalysis.types.forEach(schema => {
+    if (!schema.valid && schema.issues.length > 0) {
+      issues.push({
+        id: `issue-${issueId++}`,
+        issue: `Schema.org ${schema.type}: ${schema.issues[0]}`,
+        impact: `Invalid structured data prevents rich results for ${schema.type}.`,
+        fix: schema.issues.length > 1 ? `Fix ${schema.issues.length} issues: ${schema.issues.slice(0, 3).join('; ')}` : schema.issues[0],
+        priority: schema.type === 'Product' ? 'High' : 'Medium',
+        category: 'Structured Data',
+        fixType: 'manual',
+      });
+    }
+  });
+  if (schemaOrgAnalysis.totalFound === 0) {
+    issues.push({ id: `issue-${issueId++}`, issue: 'No Schema.org structured data found', impact: 'No eligibility for rich results (stars, FAQ, breadcrumbs, etc.).', fix: 'Add JSON-LD structured data (WebSite, Organization, BreadcrumbList at minimum).', priority: 'Medium', category: 'Structured Data', fixType: 'semi-automated' });
+  }
+
   return issues;
 }
 
@@ -1447,7 +1808,7 @@ function analyzeHeadingHierarchy(html: string): { total: number; hierarchy: stri
     const curr = parseInt(headings[i].charAt(1));
     if (curr > prev + 1) {
       issues.push(`Heading hierarchy skip: ${headings[i - 1].toUpperCase()} → ${headings[i].toUpperCase()} (skipped H${prev + 1})`);
-      break; // Only report first skip
+      break;
     }
   }
 
@@ -1480,15 +1841,15 @@ async function checkSecurityHeaders(url: string): Promise<{ https: boolean; hsts
 
 // ─── Google PageSpeed Insights API ───────────────────────────────────
 
-async function fetchPageSpeedInsights(url: string): Promise<PageSpeedResult> {
+async function fetchPageSpeedInsights(url: string, strategy: 'mobile' | 'desktop' = 'mobile'): Promise<PageSpeedResult> {
   try {
-    console.log('Fetching PageSpeed Insights for:', url);
-    const apiUrl = `https://www.googleapis.com/pagespeedonline/v5/runPagespeed?url=${encodeURIComponent(url)}&category=performance&strategy=mobile`;
+    console.log(`Fetching PageSpeed Insights (${strategy}) for:`, url);
+    const apiUrl = `https://www.googleapis.com/pagespeedonline/v5/runPagespeed?url=${encodeURIComponent(url)}&category=performance&strategy=${strategy}`;
     
     const response = await fetch(apiUrl, { signal: AbortSignal.timeout(30000) });
     
     if (!response.ok) {
-      console.error('PSI API error:', response.status);
+      console.error(`PSI API error (${strategy}):`, response.status);
       return { performanceScore: null, lcp: { value: null, rating: null }, fid: { value: null, rating: null }, cls: { value: null, rating: null }, fcp: { value: null, rating: null }, si: { value: null, rating: null }, tbt: { value: null, rating: null }, ttfb: { value: null, rating: null }, diagnostics: [], fetchedAt: null, error: `API returned ${response.status}` };
     }
 
@@ -1508,7 +1869,6 @@ async function fetchPageSpeedInsights(url: string): Promise<PageSpeedResult> {
       return { value: audit.numericValue ?? null, rating: audit.score != null ? (audit.score >= 0.9 ? 'good' : audit.score >= 0.5 ? 'needs-improvement' : 'poor') : null };
     };
 
-    // Extract top diagnostics (opportunities & diagnostics)
     const diagnosticAudits = Object.values(audits)
       .filter((a: any) => a.details?.type === 'opportunity' || (a.score !== null && a.score < 0.9 && a.details))
       .slice(0, 8)
@@ -1528,10 +1888,10 @@ async function fetchPageSpeedInsights(url: string): Promise<PageSpeedResult> {
       error: null,
     };
 
-    console.log('PSI score:', perfScore);
+    console.log(`PSI score (${strategy}):`, perfScore);
     return result;
   } catch (error) {
-    console.error('PageSpeed Insights error:', error);
+    console.error(`PageSpeed Insights error (${strategy}):`, error);
     return { performanceScore: null, lcp: { value: null, rating: null }, fid: { value: null, rating: null }, cls: { value: null, rating: null }, fcp: { value: null, rating: null }, si: { value: null, rating: null }, tbt: { value: null, rating: null }, ttfb: { value: null, rating: null }, diagnostics: [], fetchedAt: null, error: error instanceof Error ? error.message : 'Unknown error' };
   }
 }
