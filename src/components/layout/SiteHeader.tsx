@@ -2,13 +2,25 @@ import { Link, useLocation } from "react-router-dom";
 import { LanguageSwitcher } from "@/components/seo/LanguageSwitcher";
 import { useI18n } from "@/lib/i18n";
 import { cn } from "@/lib/utils";
-import { useState } from "react";
-import { Menu, X } from "lucide-react";
+import { useState, useEffect } from "react";
+import { Menu, X, Shield } from "lucide-react";
+import { supabase } from "@/integrations/supabase/client";
 
 export function SiteHeader() {
   const { t } = useI18n();
   const location = useLocation();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
+
+  useEffect(() => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_, session) => {
+      setIsAuthenticated(!!session);
+    });
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      setIsAuthenticated(!!session);
+    });
+    return () => subscription.unsubscribe();
+  }, []);
 
   const navLinks = [
     { href: "/how-it-works", label: t('nav.howItWorks') },
@@ -49,6 +61,18 @@ export function SiteHeader() {
             >
               {t('nav.analyze')}
             </Link>
+            {isAuthenticated && (
+              <Link
+                to="/admin"
+                className={cn(
+                  "text-sm font-medium transition-colors hover:text-foreground flex items-center gap-1",
+                  location.pathname === "/admin" ? "text-foreground" : "text-muted-foreground"
+                )}
+              >
+                <Shield className="h-3.5 w-3.5" />
+                {t('admin.navAdmin')}
+              </Link>
+            )}
             <LanguageSwitcher />
           </div>
 
