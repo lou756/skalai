@@ -53,12 +53,22 @@ interface ProductData {
   rating: { value: string | null; count: string | null } | null;
 }
 
+interface MerchantSignal {
+  signal: string;
+  found: boolean;
+  detail: string;
+  weight: number;
+}
+
 interface MerchantAnalysis {
   isProductPage: boolean;
   products: ProductData[];
   issues: { issue: string; impact: string; fix: string; priority: 'High' | 'Medium' | 'Low' }[];
   structuredDataFound: boolean;
   feedRecommendations: string[];
+  merchantSignals: MerchantSignal[];
+  merchantConfidence: number; // 0-100
+  productPagesFound: number;
 }
 
 interface GeneratedFix {
@@ -262,7 +272,7 @@ Deno.serve(async (req) => {
     const gscInstructions = generateGSCInstructions(formattedUrl, sitemap, robotsTxt);
     const contentAnalysis = await analyzeContent(markdown, meta, formattedUrl);
     const hreflangAnalysis = analyzeHreflang(html, meta.language);
-    const merchantAnalysis = analyzeMerchantData(html);
+    const merchantAnalysis = await analyzeMerchantDataAdvanced(html, allSiteUrls, apiKey);
     const imageAnalysis = analyzeImages(html);
     const headingAnalysis = analyzeHeadingHierarchy(html);
     const schemaOrgAnalysis = analyzeSchemaOrg(html);
@@ -901,15 +911,15 @@ function buildConfidenceIndicators(
       : 'AI suggestions could not be generated.',
   });
 
-  if (merchantAnalysis.isProductPage) {
-    indicators.push({
-      aspect: 'Merchant Analysis',
-      level: merchantAnalysis.structuredDataFound ? 'verified' : 'partial',
-      detail: merchantAnalysis.structuredDataFound
-        ? `${merchantAnalysis.products.length} product(s) extracted from JSON-LD structured data.`
-        : 'Product page detected but no structured data found. Analysis based on HTML patterns.',
-    });
-  }
+  indicators.push({
+    aspect: 'Merchant Center Detection',
+    level: merchantAnalysis.merchantConfidence >= 70 ? 'verified' 
+      : merchantAnalysis.merchantConfidence >= 40 ? 'partial' 
+      : merchantAnalysis.isProductPage ? 'uncertain' : 'not_checked',
+    detail: merchantAnalysis.isProductPage
+      ? `Confiance Merchant : ${merchantAnalysis.merchantConfidence}% (${merchantAnalysis.merchantSignals.filter(s => s.found).length}/${merchantAnalysis.merchantSignals.length} signaux). ${merchantAnalysis.productPagesFound} URL(s) produit, ${merchantAnalysis.products.length} produit(s) analysés.`
+      : 'Aucun signal e-commerce détecté. Site non-commercial probable.',
+  });
 
   indicators.push({
     aspect: 'Broken Links',
@@ -1515,59 +1525,172 @@ function analyzeHreflang(html: string, currentLang: string | null): HreflangAnal
   return { detected, issues, recommendations };
 }
 
-function analyzeMerchantData(html: string): MerchantAnalysis {
+async function analyzeMerchantDataAdvanced(html: string, allSiteUrls: string[], apiKey: string): Promise<MerchantAnalysis> {
+  const signals: MerchantSignal[] = [];
   const products: ProductData[] = [];
   const issues: { issue: string; impact: string; fix: string; priority: 'High' | 'Medium' | 'Low' }[] = [];
   const feedRecommendations: string[] = [];
   
-  const jsonLdRegex = /<script[^>]*type=["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/gi;
-  let match;
-  let structuredDataFound = false;
+  // ── Signal 1: JSON-LD Product on homepage ──
+  const homepageProducts = extractProductsFromHtml(html);
+  const structuredDataFound = homepageProducts.length > 0;
+  products.push(...homepageProducts);
   
-  while ((match = jsonLdRegex.exec(html)) !== null) {
-    try {
-      const jsonData = JSON.parse(match[1]);
-      const items = Array.isArray(jsonData) ? jsonData : [jsonData];
-      
-      for (const item of items) {
-        if (item['@type'] === 'Product' || item['@type']?.includes('Product')) {
-          structuredDataFound = true;
-          
-          products.push({
-            name: item.name || null,
-            price: item.offers?.price || item.offers?.[0]?.price || null,
-            currency: item.offers?.priceCurrency || item.offers?.[0]?.priceCurrency || null,
-            availability: item.offers?.availability || item.offers?.[0]?.availability || null,
-            description: item.description || null,
-            image: Array.isArray(item.image) ? item.image[0] : item.image || null,
-            gtin: item.gtin || item.gtin13 || item.gtin12 || item.gtin8 || item.isbn || null,
-            mpn: item.mpn || null,
-            brand: typeof item.brand === 'string' ? item.brand : item.brand?.name || null,
-            sku: item.sku || null,
-            condition: item.itemCondition || null,
-            shipping: !!item.offers?.shippingDetails || false,
-            rating: item.aggregateRating ? {
-              value: item.aggregateRating.ratingValue || null,
-              count: item.aggregateRating.reviewCount || item.aggregateRating.ratingCount || null,
-            } : null,
-          });
-        }
+  signals.push({
+    signal: 'JSON-LD Product (page principale)',
+    found: structuredDataFound,
+    detail: structuredDataFound 
+      ? `${homepageProducts.length} produit(s) avec données structurées détectés sur la page analysée.`
+      : 'Aucun balisage Product JSON-LD trouvé sur la page analysée.',
+    weight: 25,
+  });
+
+  // ── Signal 2: Product URLs in site map ──
+  const productUrlPatterns = /\/(product|produit|shop|boutique|article|item|collection|catalog|p\/|products\/|store\/)/i;
+  const productUrls = allSiteUrls.filter(u => productUrlPatterns.test(u));
+  const hasProductUrls = productUrls.length > 0;
+  
+  signals.push({
+    signal: 'URLs produit détectées (site map)',
+    found: hasProductUrls,
+    detail: hasProductUrls
+      ? `${productUrls.length} URL(s) de type produit/shop trouvées dans la structure du site.`
+      : 'Aucune URL de type /product/, /shop/, /boutique/ trouvée dans la structure du site.',
+    weight: 20,
+  });
+
+  // ── Signal 3: Google Shopping / gtag events ──
+  const gtagPatterns = [
+    { pattern: /gtag\s*\(\s*['"]event['"]\s*,\s*['"]purchase['"]/i, name: 'purchase' },
+    { pattern: /gtag\s*\(\s*['"]event['"]\s*,\s*['"]add_to_cart['"]/i, name: 'add_to_cart' },
+    { pattern: /gtag\s*\(\s*['"]event['"]\s*,\s*['"]view_item['"]/i, name: 'view_item' },
+    { pattern: /gtag\s*\(\s*['"]event['"]\s*,\s*['"]begin_checkout['"]/i, name: 'begin_checkout' },
+    { pattern: /googleadservices\.com\/pagead\/conversion/i, name: 'conversion_tracking' },
+    { pattern: /google\.com\/merchant/i, name: 'merchant_reference' },
+    { pattern: /googlesyndication|google_shopping|merchant_id/i, name: 'shopping_integration' },
+  ];
+  const foundGtagEvents = gtagPatterns.filter(p => p.pattern.test(html));
+  const hasGtagShopping = foundGtagEvents.length > 0;
+  
+  signals.push({
+    signal: 'Google Shopping / gtag events',
+    found: hasGtagShopping,
+    detail: hasGtagShopping
+      ? `Événements détectés : ${foundGtagEvents.map(e => e.name).join(', ')}. Indique une intégration e-commerce Google active.`
+      : 'Aucun événement gtag e-commerce (purchase, add_to_cart, view_item) détecté dans le code source.',
+    weight: 20,
+  });
+
+  // ── Signal 4: E-commerce platform indicators ──
+  const platformPatterns = [
+    { pattern: /Shopify\.theme|shopify\.com|cdn\.shopify/i, name: 'Shopify' },
+    { pattern: /WooCommerce|woocommerce|wc-/i, name: 'WooCommerce' },
+    { pattern: /PrestaShop|prestashop/i, name: 'PrestaShop' },
+    { pattern: /Magento|magento/i, name: 'Magento' },
+    { pattern: /BigCommerce|bigcommerce/i, name: 'BigCommerce' },
+    { pattern: /Squarespace\.com.*commerce|squarespace.*product/i, name: 'Squarespace Commerce' },
+    { pattern: /wix\.com.*stores|wixstores/i, name: 'Wix Stores' },
+  ];
+  const detectedPlatforms = platformPatterns.filter(p => p.pattern.test(html));
+  const hasEcommercePlatform = detectedPlatforms.length > 0;
+  
+  signals.push({
+    signal: 'Plateforme e-commerce détectée',
+    found: hasEcommercePlatform,
+    detail: hasEcommercePlatform
+      ? `Plateforme(s) : ${detectedPlatforms.map(p => p.name).join(', ')}. Ces plateformes supportent nativement Google Merchant Center.`
+      : 'Aucune plateforme e-commerce connue détectée (Shopify, WooCommerce, PrestaShop, etc.).',
+    weight: 15,
+  });
+
+  // ── Signal 5: Cart/checkout indicators on homepage ──
+  const cartPatterns = /add.to.cart|ajouter.au.panier|buy.now|acheter|panier|cart|checkout|caisse/i;
+  const pricePatterns = /€\s*\d|USD\s*\d|\$\s*\d|£\s*\d|prix|price/i;
+  const hasCartIndicators = cartPatterns.test(html) && pricePatterns.test(html);
+  
+  signals.push({
+    signal: 'Indicateurs panier/prix',
+    found: hasCartIndicators,
+    detail: hasCartIndicators
+      ? 'Boutons d\'achat et prix détectés sur la page. Confirme une activité e-commerce.'
+      : 'Aucun indicateur de panier ou de prix détecté sur la page analysée.',
+    weight: 10,
+  });
+
+  // ── Signal 6: Scrape 2-3 product pages for deeper analysis ──
+  let productPagesScraped = 0;
+  if (hasProductUrls && apiKey) {
+    const pagesToScrape = productUrls.slice(0, 3);
+    console.log(`Scraping ${pagesToScrape.length} product pages for Merchant detection...`);
+    
+    const scrapePromises = pagesToScrape.map(async (pUrl) => {
+      try {
+        const resp = await fetch('https://api.firecrawl.dev/v1/scrape', {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${apiKey}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ url: pUrl, formats: ['html'], onlyMainContent: false }),
+        });
+        
+        if (!resp.ok) return null;
+        const data = await resp.json();
+        const pageHtml = data.data?.html || data.html || '';
+        return pageHtml;
+      } catch {
+        return null;
       }
-    } catch (e) {
-      console.error('Error parsing JSON-LD:', e);
+    });
+
+    const scrapedPages = await Promise.all(scrapePromises);
+    
+    for (const pageHtml of scrapedPages) {
+      if (!pageHtml) continue;
+      productPagesScraped++;
+      
+      const pageProducts = extractProductsFromHtml(pageHtml);
+      products.push(...pageProducts);
+      
+      // Also check for gtag on product pages
+      const pageGtag = gtagPatterns.filter(p => p.pattern.test(pageHtml));
+      if (pageGtag.length > 0 && !hasGtagShopping) {
+        signals[2].found = true;
+        signals[2].detail = `Événements détectés sur pages produit : ${pageGtag.map(e => e.name).join(', ')}.`;
+      }
     }
   }
+
+  signals.push({
+    signal: 'Données produit sur sous-pages',
+    found: productPagesScraped > 0 && products.length > homepageProducts.length,
+    detail: productPagesScraped > 0
+      ? `${productPagesScraped} page(s) produit scannées. ${products.length - homepageProducts.length} produit(s) supplémentaires trouvés.`
+      : hasProductUrls
+        ? 'Des URLs produit existent mais n\'ont pas pu être scannées.'
+        : 'Aucune page produit à scanner.',
+    weight: 10,
+  });
+
+  // ── Calculate confidence score ──
+  let totalWeight = 0;
+  let earnedWeight = 0;
+  for (const sig of signals) {
+    totalWeight += sig.weight;
+    if (sig.found) earnedWeight += sig.weight;
+  }
+  const merchantConfidence = Math.round((earnedWeight / totalWeight) * 100);
+
+  // ── Determine if it's a product site ──
+  const isProductPage = structuredDataFound || hasProductUrls || hasCartIndicators || hasEcommercePlatform;
   
-  const hasProductIndicators = /add.to.cart|ajouter.au.panier|buy.now|acheter|prix|price|€|\$|£/i.test(html);
-  const isProductPage = structuredDataFound || (hasProductIndicators && /<[^>]*class=[^>]*product/i.test(html));
-  
+  // ── Generate issues for products ──
   if (isProductPage && !structuredDataFound) {
     issues.push({ issue: 'Missing product structured data', impact: 'Google Merchant cannot extract product information.', fix: 'Add JSON-LD structured data of type "Product".', priority: 'High' });
   }
   
   products.forEach((product, index) => {
     const prefix = products.length > 1 ? `Product ${index + 1}: ` : '';
-    
     if (!product.price) issues.push({ issue: `${prefix}Missing price`, impact: 'Required for Google Shopping.', fix: 'Add "offers.price".', priority: 'High' });
     if (!product.currency) issues.push({ issue: `${prefix}Missing currency`, impact: 'Price not interpretable.', fix: 'Add "offers.priceCurrency".', priority: 'High' });
     if (!product.availability) issues.push({ issue: `${prefix}Missing availability`, impact: 'Required for display.', fix: 'Add "offers.availability".', priority: 'High' });
@@ -1594,7 +1717,52 @@ function analyzeMerchantData(html: string): MerchantAnalysis {
     }
   }
   
-  return { isProductPage, products, issues, structuredDataFound, feedRecommendations };
+  return { 
+    isProductPage, products, issues, structuredDataFound, feedRecommendations,
+    merchantSignals: signals,
+    merchantConfidence,
+    productPagesFound: productUrls.length,
+  };
+}
+
+// Helper: extract Product JSON-LD from raw HTML
+function extractProductsFromHtml(html: string): ProductData[] {
+  const products: ProductData[] = [];
+  const jsonLdRegex = /<script[^>]*type=["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/gi;
+  let match;
+  
+  while ((match = jsonLdRegex.exec(html)) !== null) {
+    try {
+      const jsonData = JSON.parse(match[1]);
+      const items = Array.isArray(jsonData) ? jsonData : [jsonData];
+      
+      for (const item of items) {
+        if (item['@type'] === 'Product' || item['@type']?.includes('Product')) {
+          products.push({
+            name: item.name || null,
+            price: item.offers?.price || item.offers?.[0]?.price || null,
+            currency: item.offers?.priceCurrency || item.offers?.[0]?.priceCurrency || null,
+            availability: item.offers?.availability || item.offers?.[0]?.availability || null,
+            description: item.description || null,
+            image: Array.isArray(item.image) ? item.image[0] : item.image || null,
+            gtin: item.gtin || item.gtin13 || item.gtin12 || item.gtin8 || item.isbn || null,
+            mpn: item.mpn || null,
+            brand: typeof item.brand === 'string' ? item.brand : item.brand?.name || null,
+            sku: item.sku || null,
+            condition: item.itemCondition || null,
+            shipping: !!item.offers?.shippingDetails || false,
+            rating: item.aggregateRating ? {
+              value: item.aggregateRating.ratingValue || null,
+              count: item.aggregateRating.reviewCount || item.aggregateRating.ratingCount || null,
+            } : null,
+          });
+        }
+      }
+    } catch (e) {
+      // Skip invalid JSON-LD
+    }
+  }
+  return products;
 }
 
 function extractPerformanceInfo(html: string) {

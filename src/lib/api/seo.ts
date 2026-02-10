@@ -63,12 +63,22 @@ export interface ProductData {
   rating: { value: string | null; count: string | null } | null;
 }
 
+export interface MerchantSignal {
+  signal: string;
+  found: boolean;
+  detail: string;
+  weight: number;
+}
+
 export interface MerchantAnalysis {
   isProductPage: boolean;
   products: ProductData[];
   issues: { issue: string; impact: string; fix: string; priority: 'High' | 'Medium' | 'Low' }[];
   structuredDataFound: boolean;
   feedRecommendations: string[];
+  merchantSignals: MerchantSignal[];
+  merchantConfidence: number;
+  productPagesFound: number;
 }
 
 export interface GeneratedFix {
