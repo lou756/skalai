@@ -10,14 +10,32 @@ export function SiteHeader() {
   const { t } = useI18n();
   const location = useLocation();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
-  const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [isAdmin, setIsAdmin] = useState(false);
 
   useEffect(() => {
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_, session) => {
-      setIsAuthenticated(!!session);
+    const checkAdmin = async (userId: string) => {
+      const { data } = await supabase
+        .from('user_roles')
+        .select('role')
+        .eq('user_id', userId)
+        .eq('role', 'admin')
+        .maybeSingle();
+      return !!data;
+    };
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_, session) => {
+      if (session) {
+        const admin = await checkAdmin(session.user.id);
+        setIsAdmin(admin);
+      } else {
+        setIsAdmin(false);
+      }
     });
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setIsAuthenticated(!!session);
+    supabase.auth.getSession().then(async ({ data: { session } }) => {
+      if (session) {
+        const admin = await checkAdmin(session.user.id);
+        setIsAdmin(admin);
+      }
     });
     return () => subscription.unsubscribe();
   }, []);
@@ -61,7 +79,7 @@ export function SiteHeader() {
             >
               {t('nav.analyze')}
             </Link>
-            {isAuthenticated && (
+            {isAdmin && (
               <Link
                 to="/admin"
                 className={cn(
