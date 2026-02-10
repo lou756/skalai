@@ -121,6 +121,33 @@ export interface PageSpeedResult {
   error: string | null;
 }
 
+export interface RedirectInfo {
+  url: string;
+  statusCode: number;
+  redirectsTo: string;
+}
+
+export interface RedirectAnalysis {
+  chain: RedirectInfo[];
+  finalUrl: string;
+  totalRedirects: number;
+  hasRedirectLoop: boolean;
+  issues: string[];
+}
+
+export interface SchemaOrgType {
+  type: string;
+  valid: boolean;
+  issues: string[];
+}
+
+export interface SchemaOrgAnalysis {
+  types: SchemaOrgType[];
+  totalFound: number;
+  validCount: number;
+  recommendations: string[];
+}
+
 export interface SEOAnalysisResult {
   url: string;
   score: number;
@@ -147,6 +174,7 @@ export interface SEOAnalysisResult {
     hasViewportMeta: boolean;
   };
   pageSpeed: PageSpeedResult | null;
+  pageSpeedDesktop: PageSpeedResult | null;
   brokenLinks: BrokenLink[];
   gscInstructions: string[];
   contentAnalysis: ContentAnalysis;
@@ -154,6 +182,8 @@ export interface SEOAnalysisResult {
   merchantAnalysis: MerchantAnalysis;
   generatedFixes: GeneratedFix[];
   actionReport: ActionReport;
+  redirectAnalysis: RedirectAnalysis;
+  schemaOrgAnalysis: SchemaOrgAnalysis;
 }
 
 export type SEOResponse = {
