@@ -336,24 +336,67 @@ export function GSCMerchantStatus({ result }: GSCMerchantStatusProps) {
 
           {showCompliance && (
             <div className="space-y-1.5 mb-3">
-              {compliance.checks.map((check, i) => (
-                <div key={i} className="flex items-start gap-2 py-1 border-b border-border/20 last:border-0">
-                  {check.found ? (
-                    <CheckCircle2 className="h-3.5 w-3.5 text-emerald-500 shrink-0 mt-0.5" />
-                  ) : (
-                    <XCircle className="h-3.5 w-3.5 text-destructive shrink-0 mt-0.5" />
-                  )}
-                  <div className="min-w-0">
-                    <div className="flex items-center gap-1.5">
-                      <span className="text-xs">{getCategoryIcon(check.category)}</span>
-                      <span className={cn("text-xs font-medium", check.found ? "text-foreground" : "text-destructive")}>
-                        {check.name}
-                      </span>
+              {compliance.checks.map((check, i) => {
+                // Icon logic: content analyzed + valid = green, analyzed + invalid = amber, found but not analyzed = blue, missing = red
+                const getCheckIcon = () => {
+                  if (!check.found) return <XCircle className="h-3.5 w-3.5 text-destructive shrink-0 mt-0.5" />;
+                  if (check.contentAnalyzed && check.contentValid) return <CheckCircle2 className="h-3.5 w-3.5 text-emerald-500 shrink-0 mt-0.5" />;
+                  if (check.contentAnalyzed && !check.contentValid) return <AlertTriangle className="h-3.5 w-3.5 text-amber-500 shrink-0 mt-0.5" />;
+                  return <CheckCircle2 className="h-3.5 w-3.5 text-blue-500 shrink-0 mt-0.5" />;
+                };
+
+                const getNameColor = () => {
+                  if (!check.found) return 'text-destructive';
+                  if (check.contentAnalyzed && check.contentValid) return 'text-emerald-600';
+                  if (check.contentAnalyzed && !check.contentValid) return 'text-amber-600';
+                  return 'text-foreground';
+                };
+
+                return (
+                  <div key={i} className="flex items-start gap-2 py-1.5 border-b border-border/20 last:border-0">
+                    {getCheckIcon()}
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        <span className="text-xs">{getCategoryIcon(check.category)}</span>
+                        <span className={cn("text-xs font-medium", getNameColor())}>
+                          {check.name}
+                        </span>
+                        {check.contentAnalyzed && (
+                          <span className={cn(
+                            "text-[9px] px-1 py-0.5 rounded font-medium",
+                            check.contentValid 
+                              ? "bg-emerald-500/10 text-emerald-600" 
+                              : "bg-amber-500/10 text-amber-600"
+                          )}>
+                            {check.contentValid ? 'Contenu conforme' : 'Contenu insuffisant'}
+                          </span>
+                        )}
+                        {check.found && !check.contentAnalyzed && check.category !== 'product_quality' && check.category !== 'trust' && (
+                          <span className="text-[9px] px-1 py-0.5 rounded bg-blue-500/10 text-blue-600 font-medium">
+                            Non analysé
+                          </span>
+                        )}
+                        {check.pageUrl && (
+                          <a href={check.pageUrl} target="_blank" rel="noopener noreferrer" className="inline-flex items-center text-[9px] text-primary hover:underline">
+                            <ExternalLink className="h-2.5 w-2.5" />
+                          </a>
+                        )}
+                      </div>
+                      <p className="text-[11px] text-muted-foreground leading-tight mt-0.5">{check.detail}</p>
+                      {check.contentIssues.length > 0 && (
+                        <ul className="mt-1 space-y-0.5">
+                          {check.contentIssues.map((issue, j) => (
+                            <li key={j} className="text-[10px] text-amber-600 flex items-start gap-1">
+                              <span className="shrink-0">•</span>
+                              <span>{issue}</span>
+                            </li>
+                          ))}
+                        </ul>
+                      )}
                     </div>
-                    <p className="text-[11px] text-muted-foreground leading-tight">{check.detail}</p>
                   </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           )}
 
@@ -365,11 +408,11 @@ export function GSCMerchantStatus({ result }: GSCMerchantStatusProps) {
             </div>
           )}
 
-          <div className="flex items-start gap-1.5 p-2 rounded-lg bg-amber-500/5 border border-amber-500/10 mt-3">
-            <AlertTriangle className="h-3 w-3 text-amber-500 shrink-0 mt-0.5" />
+          <div className="flex items-start gap-1.5 p-2 rounded-lg bg-primary/5 border border-primary/10 mt-3">
+            <Shield className="h-3 w-3 text-primary shrink-0 mt-0.5" />
             <p className="text-[10px] text-muted-foreground leading-tight">
-              Cette vérification détecte la <strong>présence</strong> des pages requises, mais ne peut pas analyser leur <strong>contenu</strong> 
-              (ex: si la politique de retour est conforme aux exigences Google). L'approbation finale reste à la discrétion de Google.
+              Chaque page de politique est <strong>scrapée et analysée par IA</strong> pour vérifier la conformité du contenu aux exigences Google Merchant Center. 
+              Un score de 100% indique que toutes les pages sont présentes et leur contenu répond aux critères. L'approbation finale reste à la discrétion de Google.
             </p>
           </div>
         </div>
