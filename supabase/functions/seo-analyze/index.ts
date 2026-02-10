@@ -1241,36 +1241,180 @@ function buildActionReport(
   const automated: ActionReport['automated'] = [];
   const manual: ActionReport['manual'] = [];
 
+  // ── Automated fixes already generated ──
   fixes.forEach(fix => {
     automated.push({
       action: fix.label,
-      status: fix.status === 'auto_generated' ? '✅ Generated' : '📝 Review needed',
+      status: fix.status === 'auto_generated' ? '✅ Généré' : '📝 À vérifier',
       details: fix.description,
     });
   });
 
+  // ══════════════════════════════════════════════════════════════════
+  // GOOGLE SEARCH — Recommandations basées sur les données réelles
+  // ══════════════════════════════════════════════════════════════════
+
+  // Indexation bloquée
   if (meta.robots?.includes('noindex')) {
-    manual.push({ action: 'Remove noindex directive', instructions: 'Edit the <meta name="robots"> tag to remove "noindex" if you want this page indexed.', priority: 'High' });
+    manual.push({ action: 'Supprimer la directive noindex', instructions: 'La balise <meta name="robots" content="noindex"> empêche Google d\'indexer cette page. Modifiez-la pour retirer "noindex" si vous voulez apparaître dans les résultats de recherche.', priority: 'High' });
   }
-  if (!meta.hasH1) {
-    manual.push({ action: 'Add an H1 tag', instructions: 'Add a unique H1 heading with your target keyword.', priority: 'High' });
-  }
-  if (!meta.language) {
-    manual.push({ action: 'Declare site language', instructions: 'Add lang="fr" (or appropriate language) to your <html> tag.', priority: 'Medium' });
-  }
-  if (!sitemap.found) {
-    manual.push({ action: 'Deploy sitemap.xml', instructions: 'Download the generated sitemap and place it at your site root. Then submit it in Google Search Console.', priority: 'High' });
-  }
-  if (!robotsTxt.found) {
-    manual.push({ action: 'Deploy robots.txt', instructions: 'Download the generated robots.txt and place it at your domain root.', priority: 'Medium' });
-  }
-  if (merchantAnalysis.isProductPage && !merchantAnalysis.structuredDataFound) {
-    manual.push({ action: 'Add product structured data', instructions: 'Add Product JSON-LD in the <head> of your product pages for Google Shopping.', priority: 'High' });
-  }
-  if (merchantAnalysis.isProductPage && merchantAnalysis.products.length > 0) {
-    manual.push({ action: 'Submit Merchant Center feed', instructions: 'Download the generated CSV feed, log into merchants.google.com, and import it under Products → Feeds.', priority: 'High' });
+  if (robotsTxt.blocksGooglebot) {
+    manual.push({ action: 'Débloquer Googlebot dans robots.txt', instructions: 'Votre robots.txt contient "Disallow: /" pour Googlebot ou tous les agents. Cela bloque l\'indexation de tout votre site. Modifiez la règle pour autoriser l\'accès.', priority: 'High' });
   }
 
+  // Balise title
+  if (!meta.title) {
+    manual.push({ action: 'Ajouter une balise <title>', instructions: 'Chaque page doit avoir un <title> unique de 50-60 caractères contenant votre mot-clé principal. C\'est le facteur on-page #1 pour le référencement Google.', priority: 'High' });
+  } else if (meta.title.length > 60) {
+    manual.push({ action: 'Raccourcir la balise <title>', instructions: `Votre title fait ${meta.title.length} caractères. Google tronque au-delà de 60 caractères. Raccourcissez-le tout en gardant votre mot-clé principal au début.`, priority: 'Medium' });
+  } else if (meta.title.length < 20) {
+    manual.push({ action: 'Enrichir la balise <title>', instructions: `Votre title ne fait que ${meta.title.length} caractères. Utilisez l'espace disponible (50-60 car.) pour inclure votre mot-clé principal et une proposition de valeur.`, priority: 'Medium' });
+  }
+
+  // Meta description
+  if (!meta.description) {
+    manual.push({ action: 'Ajouter une meta description', instructions: 'Ajoutez <meta name="description" content="..."> de 150-160 caractères. Bien qu\'elle n\'affecte pas directement le ranking, elle influence fortement le taux de clic (CTR) dans les résultats Google.', priority: 'High' });
+  } else if (meta.description.length > 160) {
+    manual.push({ action: 'Raccourcir la meta description', instructions: `Votre description fait ${meta.description.length} caractères. Google tronque au-delà de 160 caractères. Gardez le message essentiel dans les 160 premiers caractères.`, priority: 'Low' });
+  }
+
+  // H1
+  if (!meta.hasH1) {
+    manual.push({ action: 'Ajouter une balise H1', instructions: 'Ajoutez un H1 unique contenant votre mot-clé principal. Google utilise le H1 pour comprendre le sujet de la page. Chaque page doit avoir exactement un H1.', priority: 'High' });
+  } else if (meta.h1Count > 1) {
+    manual.push({ action: 'Garder un seul H1 par page', instructions: `${meta.h1Count} balises H1 détectées. Google recommande un seul H1 par page. Convertissez les H1 supplémentaires en H2 ou H3.`, priority: 'Medium' });
+  }
+
+  // Langue
+  if (!meta.language) {
+    manual.push({ action: 'Déclarer la langue du site', instructions: 'Ajoutez lang="fr" (ou la langue appropriée) à votre balise <html>. Google utilise cette information pour le ciblage linguistique et l\'affichage dans les résultats de recherche locaux.', priority: 'Medium' });
+  }
+
+  // Open Graph
+  if (!meta.hasOgTags) {
+    manual.push({ action: 'Ajouter les balises Open Graph', instructions: 'Ajoutez og:title, og:description, og:image et og:url. Ces balises contrôlent l\'apparence de vos pages quand elles sont partagées sur les réseaux sociaux (Facebook, LinkedIn).', priority: 'Medium' });
+  }
+  if (!meta.hasTwitterCards) {
+    manual.push({ action: 'Ajouter les Twitter Cards', instructions: 'Ajoutez <meta name="twitter:card" content="summary_large_image"> et les balises associées pour un affichage optimisé sur Twitter/X.', priority: 'Low' });
+  }
+
+  // Canonical
+  if (!meta.canonical) {
+    manual.push({ action: 'Ajouter une balise canonical', instructions: 'Ajoutez <link rel="canonical" href="URL"> pour indiquer à Google la version principale de cette page. Cela évite le contenu dupliqué et consolide le "link juice".', priority: 'Medium' });
+  }
+
+  // Sitemap
+  if (!sitemap.found) {
+    manual.push({ action: 'Déployer un sitemap.xml', instructions: 'Aucun sitemap.xml trouvé. Téléchargez le sitemap généré par SKAL IA et placez-le à la racine de votre site. Puis soumettez-le dans Google Search Console sous Sitemaps > Ajouter un sitemap.', priority: 'High' });
+  } else if (sitemap.found && !sitemap.isValid) {
+    manual.push({ action: 'Corriger le sitemap.xml', instructions: 'Votre sitemap existe mais contient des erreurs de format. Assurez-vous qu\'il est en XML valide avec la balise <urlset> et des entrées <url><loc>.', priority: 'High' });
+  }
+
+  // Robots.txt
+  if (!robotsTxt.found) {
+    manual.push({ action: 'Créer un robots.txt', instructions: 'Aucun robots.txt trouvé. Téléchargez celui généré par SKAL IA et placez-le à la racine de votre domaine. Il doit contenir User-agent: * et Sitemap: [URL de votre sitemap].', priority: 'Medium' });
+  }
+
+  // ══════════════════════════════════════════════════════════════════
+  // GOOGLE MERCHANT CENTER — Recommandations basées sur les données réelles  
+  // ══════════════════════════════════════════════════════════════════
+
+  if (merchantAnalysis.isProductPage) {
+    const products = merchantAnalysis.products;
+    const compliance = merchantAnalysis.compliance;
+
+    // Données structurées produit
+    if (!merchantAnalysis.structuredDataFound) {
+      manual.push({ action: '[Merchant] Ajouter le balisage Product JSON-LD', instructions: 'Google Merchant Center exige des données structurées Product sur chaque page produit. Ajoutez un script type="application/ld+json" avec @type: "Product", incluant name, image, offers (price, priceCurrency, availability).', priority: 'High' });
+    }
+
+    // GTIN / Identifiants
+    if (products.length > 0) {
+      const withGTIN = products.filter(p => p.gtin || (p.mpn && p.brand));
+      if (withGTIN.length < products.length) {
+        const missing = products.length - withGTIN.length;
+        manual.push({ action: `[Merchant] Ajouter GTIN/EAN sur ${missing} produit(s)`, instructions: `${missing} produit(s) n'ont pas d'identifiant produit. Google exige un GTIN (EAN-13, UPC-A, ISBN) pour chaque produit. Si le produit n'a pas de GTIN, fournissez MPN + brand. Sans identifiant, vos produits seront refusés par Google Shopping.`, priority: 'High' });
+      }
+
+      // Disponibilité
+      const withAvail = products.filter(p => p.availability);
+      if (withAvail.length < products.length) {
+        manual.push({ action: `[Merchant] Ajouter le statut de disponibilité`, instructions: `${products.length - withAvail.length} produit(s) sans attribut "availability" dans le JSON-LD. Utilisez les valeurs Schema.org : "https://schema.org/InStock", "https://schema.org/OutOfStock", "https://schema.org/PreOrder". Obligatoire pour l'approbation.`, priority: 'High' });
+      }
+
+      // Images
+      const withImages = products.filter(p => p.image);
+      if (withImages.length < products.length) {
+        manual.push({ action: `[Merchant] Ajouter les images produits manquantes`, instructions: `${products.length - withImages.length} produit(s) sans image. Exigences Google : minimum 100x100px (250x250px recommandé pour vêtements), fond blanc ou neutre, sans watermark ni texte promotionnel, sans bordure. Le produit doit occuper 75-90% de l'image.`, priority: 'High' });
+      }
+
+      // Prix
+      const withPrice = products.filter(p => p.price && p.currency);
+      if (withPrice.length < products.length) {
+        manual.push({ action: `[Merchant] Compléter les prix et devises`, instructions: `${products.length - withPrice.length} produit(s) sans prix ou devise. Le prix dans le JSON-LD doit correspondre exactement au prix affiché sur la page. La devise doit être au format ISO 4217 (EUR, USD, GBP). Toute incohérence = refus.`, priority: 'High' });
+      }
+
+      // Devises multiples
+      const currencies = [...new Set(products.map(p => p.currency).filter(Boolean))];
+      if (currencies.length > 1) {
+        manual.push({ action: '[Merchant] Uniformiser les devises', instructions: `${currencies.length} devises détectées (${currencies.join(', ')}). Un flux Merchant Center ne peut contenir qu'une seule devise, correspondant au pays cible. Créez des flux séparés par pays/devise si vous vendez à l'international.`, priority: 'High' });
+      }
+    }
+
+    // Pages de politique (basé sur les vérifications compliance réelles)
+    if (compliance) {
+      const missingPolicies = compliance.checks.filter(c => !c.found && c.category === 'policy');
+      missingPolicies.forEach(check => {
+        const policyGuides: Record<string, string> = {
+          'Politique de retour/remboursement': 'Créez une page dédiée contenant : délai de retour (14 ou 30 jours minimum en UE), conditions du produit pour retour, processus étape par étape, mode de remboursement, exceptions éventuelles. URL type : /politique-de-retour',
+          'Politique de livraison': 'Créez une page contenant : zones de livraison, délais estimés par zone, coûts de livraison (ou seuil de gratuité), transporteurs utilisés, suivi de commande. URL type : /livraison',
+          'CGV / Conditions générales': 'Page obligatoire contenant : identité du vendeur (raison sociale, adresse, SIRET), conditions de vente, modalités de paiement, limitation de responsabilité, droit applicable, juridiction. URL type : /cgv',
+          'Page de contact': 'Page avec au minimum : adresse physique, email, téléphone, et idéalement un formulaire de contact. Google vérifie manuellement la présence d\'informations de contact vérifiables.',
+          'Politique de confidentialité': 'Page obligatoire (RGPD) contenant : données collectées et finalités, base légale du traitement, durée de conservation, droits des utilisateurs (accès, rectification, suppression), usage des cookies, partage avec des tiers. URL type : /confidentialite',
+        };
+        manual.push({
+          action: `[Merchant] Créer : ${check.name}`,
+          instructions: policyGuides[check.name] || `Page "${check.name}" manquante. Obligatoire pour l'approbation Merchant Center.`,
+          priority: 'High',
+        });
+      });
+
+      // Pages avec contenu insuffisant
+      const insufficientContent = compliance.checks.filter(c => c.found && c.contentAnalyzed && !c.contentValid);
+      insufficientContent.forEach(check => {
+        manual.push({
+          action: `[Merchant] Améliorer le contenu : ${check.name}`,
+          instructions: `Page trouvée mais contenu jugé insuffisant par l'analyse IA. Problème(s) : ${check.contentIssues.join(' • ')}. Google effectue une vérification manuelle du contenu de ces pages. Un contenu trop vague ou incomplet entraîne un refus.`,
+          priority: 'High',
+        });
+      });
+
+      // Identité vendeur
+      const identityCheck = compliance.checks.find(c => c.name === 'Informations vendeur');
+      if (identityCheck && !identityCheck.contentValid) {
+        manual.push({ action: '[Merchant] Compléter l\'identité du vendeur', instructions: 'Google Merchant Center exige une identité vérifiable : nom d\'entreprise ou nom légal, adresse physique complète (pas de boîte postale), numéro d\'enregistrement (SIRET, TVA intracommunautaire). Ces informations doivent être visibles sur le site, idéalement dans les mentions légales et le footer.', priority: 'High' });
+      }
+
+      // Paiement
+      const paymentCheck = compliance.checks.find(c => c.name === 'Paiement sécurisé');
+      if (paymentCheck && !paymentCheck.contentValid) {
+        manual.push({ action: '[Merchant] Sécuriser le processus de paiement', instructions: 'Exigences Google : checkout en HTTPS avec certificat SSL valide, page de paiement accessible sans inscription obligatoire préalable, moyens de paiement clairement affichés (Visa, Mastercard, PayPal...), prix final incluant toutes les taxes visible avant la confirmation.', priority: 'High' });
+      }
+
+      // HTTPS
+      const httpsCheck = compliance.checks.find(c => c.name === 'HTTPS / SSL obligatoire');
+      if (httpsCheck && !httpsCheck.contentValid) {
+        manual.push({ action: '[Merchant] Passer tout le site en HTTPS', instructions: 'Google Merchant Center exige HTTPS sur toutes les pages, en particulier : pages produits, checkout, pages de politique. Installez un certificat SSL (Let\'s Encrypt est gratuit) et redirigez tout le trafic HTTP vers HTTPS via une redirection 301.', priority: 'High' });
+      }
+    }
+
+    // Soumission du flux
+    if (products.length > 0) {
+      manual.push({ action: '[Merchant] Soumettre le flux produits', instructions: 'Téléchargez le flux CSV/XML généré par SKAL IA. Connectez-vous à merchants.google.com > Produits > Flux > Ajouter un flux. Sélectionnez votre pays et langue cibles. Importez le fichier. Google analysera votre flux sous 3-5 jours ouvrables.', priority: 'High' });
+    }
+  }
+
+  // Ajouter les issues critiques manuelles restantes (dédoublonnées)
   issues.filter(i => i.priority === 'High' && i.fixType === 'manual').forEach(issue => {
     const alreadyListed = manual.some(m => m.action.includes(issue.issue.substring(0, 20)));
     if (!alreadyListed) {
