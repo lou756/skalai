@@ -91,7 +91,7 @@ export interface MerchantComplianceCheck {
   contentValid: boolean | null;
   contentIssues: string[];
   detail: string;
-  category: 'policy' | 'product_quality' | 'trust';
+  category: 'policy' | 'product_quality' | 'trust' | 'identity' | 'technical';
 }
 
 export interface MerchantCompliance {
