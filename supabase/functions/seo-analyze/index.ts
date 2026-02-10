@@ -225,22 +225,25 @@ Deno.serve(async (req) => {
     const meta = extractMetaInfo(html, metadata);
     
     // Run parallel fetches
-    const [robotsTxt, pageSpeed] = await Promise.all([
+    const [robotsTxt, pageSpeed, securityHeaders] = await Promise.all([
       checkRobotsTxt(formattedUrl, apiKey),
       fetchPageSpeedInsights(formattedUrl),
+      checkSecurityHeaders(formattedUrl),
     ]);
     const sitemap = await checkSitemap(formattedUrl, robotsTxt.content, apiKey);
     const performance = extractPerformanceInfo(html);
-    const brokenLinks = await checkBrokenLinks(links.slice(0, 15));
+    const brokenLinks = await checkBrokenLinks(links.slice(0, 30));
     const gscInstructions = generateGSCInstructions(formattedUrl, sitemap, robotsTxt);
     const contentAnalysis = await analyzeContent(markdown, meta, formattedUrl);
     const hreflangAnalysis = analyzeHreflang(html, meta.language);
     const merchantAnalysis = analyzeMerchantData(html);
+    const imageAnalysis = analyzeImages(html);
+    const headingAnalysis = analyzeHeadingHierarchy(html);
     
-    const issues = generateIssues(meta, robotsTxt, sitemap, performance, formattedUrl, brokenLinks, contentAnalysis, hreflangAnalysis, merchantAnalysis);
+    const issues = generateIssues(meta, robotsTxt, sitemap, performance, formattedUrl, brokenLinks, contentAnalysis, hreflangAnalysis, merchantAnalysis, imageAnalysis, headingAnalysis, securityHeaders, pageSpeed);
     
     // NEW: Weighted positive scoring system
-    const { score, breakdown } = calculateWeightedScore(meta, robotsTxt, sitemap, performance, brokenLinks, contentAnalysis, hreflangAnalysis, merchantAnalysis, issues);
+    const { score, breakdown } = calculateWeightedScore(meta, robotsTxt, sitemap, performance, brokenLinks, contentAnalysis, hreflangAnalysis, merchantAnalysis, issues, pageSpeed, imageAnalysis, headingAnalysis, securityHeaders);
     
     // NEW: Confidence indicators
     const confidence = buildConfidenceIndicators(html, meta, robotsTxt, sitemap, contentAnalysis, merchantAnalysis, allSiteUrls.length);
@@ -254,11 +257,14 @@ Deno.serve(async (req) => {
 
     // Count elements checked
     const elementsChecked = 
-      13 + // meta checks (title, desc, canonical, robots, lang, h1, og, twitter, viewport, lazy, etc.)
-      (brokenLinks.length > 0 ? links.slice(0, 15).length : links.slice(0, 15).length) + // links checked
+      13 + // meta checks
+      (links.slice(0, 30).length) + // links checked (increased to 30)
       (contentAnalysis.keywordDensity.length) + // keywords analyzed
       (merchantAnalysis.products.length * 12) + // product fields per product
       (allSiteUrls.length > 0 ? 1 : 0) + // URL discovery
+      (imageAnalysis.total) + // images analyzed
+      (headingAnalysis.total) + // headings analyzed
+      4 + // security headers
       2; // robots.txt + sitemap
 
     const scanMeta: ScanMeta = {
@@ -266,13 +272,16 @@ Deno.serve(async (req) => {
       durationMs,
       pagesCrawled: allSiteUrls.length || 1,
       elementsChecked,
-      engine: 'SKAL IA v2.0',
+      engine: 'SKAL IA v3.0',
       sources: [
         'Firecrawl Web Scraping API',
         'Firecrawl Map API (URL discovery)',
         'Google PageSpeed Insights API (Core Web Vitals)',
-        'Direct HTTP requests (robots.txt, sitemap, broken links)',
+        'Direct HTTP requests (robots.txt, sitemap, broken links, security headers)',
         'Lovable AI Gateway (Gemini - content suggestions)',
+        'Image accessibility analysis (alt text)',
+        'Heading hierarchy analysis (H1-H6)',
+        'Security headers audit (HTTPS, HSTS, CSP, X-Frame-Options)',
       ],
     };
 
@@ -354,7 +363,11 @@ function calculateWeightedScore(
   contentAnalysis: ContentAnalysis,
   hreflangAnalysis: HreflangAnalysis,
   merchantAnalysis: MerchantAnalysis,
-  issues: SEOIssue[]
+  issues: SEOIssue[],
+  pageSpeed: PageSpeedResult,
+  imageAnalysis: { total: number; withoutAlt: number; withoutAlt_list: string[] },
+  headingAnalysis: { total: number; hierarchy: string[]; issues: string[] },
+  securityHeaders: { https: boolean; hsts: boolean; xFrameOptions: boolean; csp: boolean; xContentType: boolean }
 ): { score: number; breakdown: ScoreBreakdown[] } {
   const breakdown: ScoreBreakdown[] = [];
 
@@ -421,47 +434,84 @@ function calculateWeightedScore(
     details: `Open Graph: ${meta.hasOgTags ? '✓' : '✗'} | Twitter Cards: ${meta.hasTwitterCards ? '✓' : '✗'}`,
   });
 
-  // 5. Mobile & Performance (15 points max)
+  // 5. Mobile & Performance (15 points max) - now includes PageSpeed
   let perfScore = 0;
   const perfMax = 15;
-  if (performance.hasViewportMeta) perfScore += 10;
-  if (performance.hasLazyLoading) perfScore += 5;
+  if (performance.hasViewportMeta) perfScore += 4;
+  if (performance.hasLazyLoading) perfScore += 2;
+  // Integrate real PageSpeed score
+  if (pageSpeed.performanceScore !== null) {
+    if (pageSpeed.performanceScore >= 90) perfScore += 9;
+    else if (pageSpeed.performanceScore >= 50) perfScore += 5;
+    else if (pageSpeed.performanceScore >= 25) perfScore += 2;
+  } else {
+    // If PSI unavailable, give partial credit for having viewport/lazy
+    perfScore += 4;
+  }
+  const psiLabel = pageSpeed.performanceScore !== null ? `PSI: ${pageSpeed.performanceScore}/100` : 'PSI: N/A';
   breakdown.push({
     category: 'Mobile & Performance',
     score: Math.min(perfScore, perfMax),
     maxScore: perfMax,
-    details: `Viewport: ${performance.hasViewportMeta ? '✓' : '✗'} | Lazy loading: ${performance.hasLazyLoading ? '✓' : '✗'}`,
+    details: `Viewport: ${performance.hasViewportMeta ? '✓' : '✗'} | Lazy loading: ${performance.hasLazyLoading ? '✓' : '✗'} | ${psiLabel}`,
   });
 
-  // 6. Links Health (10 points max)
-  let linksScore = 10;
-  const linksMax = 10;
+  // 6. Links Health (8 points max)
+  let linksScore = 8;
+  const linksMax = 8;
   if (brokenLinks.length > 0) {
-    linksScore = Math.max(0, 10 - brokenLinks.length * 3);
+    linksScore = Math.max(0, 8 - brokenLinks.length * 2);
   }
   breakdown.push({
     category: 'Links Health',
     score: Math.min(linksScore, linksMax),
     maxScore: linksMax,
-    details: brokenLinks.length === 0 ? 'No broken links detected' : `${brokenLinks.length} broken link(s) found`,
+    details: brokenLinks.length === 0 ? `No broken links detected (${30} checked)` : `${brokenLinks.length} broken link(s) found`,
   });
 
-  // 7. Internationalization (10 points max) - only scored if site has lang or hreflang
+  // 7. Internationalization (7 points max)
   let i18nScore = 0;
-  const i18nMax = 10;
-  if (meta.language) i18nScore += 4;
+  const i18nMax = 7;
+  if (meta.language) i18nScore += 3;
   if (hreflangAnalysis.detected.length > 0) {
-    i18nScore += 3;
-    if (hreflangAnalysis.issues.length === 0) i18nScore += 3;
+    i18nScore += 2;
+    if (hreflangAnalysis.issues.length === 0) i18nScore += 2;
   } else if (meta.language) {
-    // Single language site with lang declared is fine
-    i18nScore += 6;
+    i18nScore += 4;
   }
   breakdown.push({
     category: 'Internationalization',
     score: Math.min(i18nScore, i18nMax),
     maxScore: i18nMax,
     details: meta.language ? `Lang: ${meta.language} | Versions: ${hreflangAnalysis.detected.length || 'single language'}` : 'No language declared',
+  });
+
+  // 8. Image Accessibility (5 points max)
+  let imgScore = 5;
+  const imgMax = 5;
+  if (imageAnalysis.total > 0) {
+    const altRatio = 1 - (imageAnalysis.withoutAlt / imageAnalysis.total);
+    imgScore = Math.round(altRatio * 5);
+  }
+  breakdown.push({
+    category: 'Image Accessibility',
+    score: Math.min(imgScore, imgMax),
+    maxScore: imgMax,
+    details: imageAnalysis.total === 0 ? 'No images found' : `${imageAnalysis.total - imageAnalysis.withoutAlt}/${imageAnalysis.total} images have alt text`,
+  });
+
+  // 9. Security & HTTPS (5 points max)
+  let secScore = 0;
+  const secMax = 5;
+  if (securityHeaders.https) secScore += 2;
+  if (securityHeaders.hsts) secScore += 1;
+  if (securityHeaders.xContentType) secScore += 1;
+  if (securityHeaders.csp || securityHeaders.xFrameOptions) secScore += 1;
+  breakdown.push({
+    category: 'Security & HTTPS',
+    score: Math.min(secScore, secMax),
+    maxScore: secMax,
+    details: `HTTPS: ${securityHeaders.https ? '✓' : '✗'} | HSTS: ${securityHeaders.hsts ? '✓' : '✗'} | CSP: ${securityHeaders.csp ? '✓' : '✗'}`,
   });
 
   const totalScore = breakdown.reduce((sum, b) => sum + b.score, 0);
@@ -1234,7 +1284,11 @@ function generateIssues(
   brokenLinks: BrokenLink[],
   contentAnalysis: ContentAnalysis,
   hreflangAnalysis: HreflangAnalysis,
-  merchantAnalysis: MerchantAnalysis
+  merchantAnalysis: MerchantAnalysis,
+  imageAnalysis: { total: number; withoutAlt: number; withoutAlt_list: string[] },
+  headingAnalysis: { total: number; hierarchy: string[]; issues: string[] },
+  securityHeaders: { https: boolean; hsts: boolean; xFrameOptions: boolean; csp: boolean; xContentType: boolean },
+  pageSpeed: PageSpeedResult
 ): SEOIssue[] {
   const issues: SEOIssue[] = [];
   let issueId = 1;
@@ -1319,7 +1373,109 @@ function generateIssues(
     });
   }
 
+  // Image accessibility issues
+  if (imageAnalysis.withoutAlt > 0) {
+    issues.push({ id: `issue-${issueId++}`, issue: `${imageAnalysis.withoutAlt} image(s) missing alt text`, impact: 'Hurts accessibility and image SEO. Screen readers cannot describe these images.', fix: 'Add descriptive alt attributes to all <img> tags.', priority: imageAnalysis.withoutAlt > 5 ? 'High' : 'Medium', category: 'Accessibility', fixType: 'manual' });
+  }
+
+  // Heading hierarchy issues
+  headingAnalysis.issues.forEach(hi => {
+    issues.push({ id: `issue-${issueId++}`, issue: hi, impact: 'Poor heading hierarchy hurts content structure and SEO.', fix: 'Ensure headings follow a logical order (H1 → H2 → H3).', priority: 'Medium', category: 'Structure', fixType: 'manual' });
+  });
+
+  // Security issues
+  if (!securityHeaders.https) {
+    issues.push({ id: `issue-${issueId++}`, issue: 'Site not using HTTPS', impact: 'Google penalizes non-HTTPS sites. User data is exposed.', fix: 'Install an SSL certificate and redirect HTTP to HTTPS.', priority: 'High', category: 'Security', fixType: 'manual' });
+  }
+  if (!securityHeaders.hsts && securityHeaders.https) {
+    issues.push({ id: `issue-${issueId++}`, issue: 'Missing HSTS header', impact: 'Browser may load HTTP version, enabling downgrade attacks.', fix: 'Add Strict-Transport-Security header.', priority: 'Low', category: 'Security', fixType: 'manual' });
+  }
+  if (!securityHeaders.xContentType) {
+    issues.push({ id: `issue-${issueId++}`, issue: 'Missing X-Content-Type-Options header', impact: 'Browser MIME sniffing can lead to XSS attacks.', fix: 'Add X-Content-Type-Options: nosniff header.', priority: 'Low', category: 'Security', fixType: 'manual' });
+  }
+
+  // PageSpeed performance issues
+  if (pageSpeed.performanceScore !== null && pageSpeed.performanceScore < 50) {
+    issues.push({ id: `issue-${issueId++}`, issue: `Poor performance score (${pageSpeed.performanceScore}/100)`, impact: 'Google uses Core Web Vitals as a ranking factor.', fix: 'Optimize images, reduce JavaScript, enable caching.', priority: 'High', category: 'Performance', fixType: 'manual' });
+  } else if (pageSpeed.performanceScore !== null && pageSpeed.performanceScore < 90) {
+    issues.push({ id: `issue-${issueId++}`, issue: `Performance needs improvement (${pageSpeed.performanceScore}/100)`, impact: 'Moderate impact on Core Web Vitals ranking signal.', fix: 'Check PageSpeed diagnostics for specific optimizations.', priority: 'Medium', category: 'Performance', fixType: 'manual' });
+  }
+  if (pageSpeed.lcp.rating === 'poor') {
+    issues.push({ id: `issue-${issueId++}`, issue: 'Poor LCP (Largest Contentful Paint)', impact: `LCP: ${pageSpeed.lcp.value ? (pageSpeed.lcp.value / 1000).toFixed(1) + 's' : 'N/A'}. Should be under 2.5s.`, fix: 'Optimize largest visible element loading: compress images, use CDN, preload critical resources.', priority: 'High', category: 'Performance', fixType: 'manual' });
+  }
+  if (pageSpeed.cls.rating === 'poor') {
+    issues.push({ id: `issue-${issueId++}`, issue: 'Poor CLS (Cumulative Layout Shift)', impact: `CLS: ${pageSpeed.cls.value?.toFixed(3) ?? 'N/A'}. Should be under 0.1.`, fix: 'Set explicit dimensions on images/videos, avoid inserting content above existing content.', priority: 'High', category: 'Performance', fixType: 'manual' });
+  }
+
   return issues;
+}
+
+// ─── Image Accessibility Analysis ────────────────────────────────────
+
+function analyzeImages(html: string): { total: number; withoutAlt: number; withoutAlt_list: string[] } {
+  const imgRegex = /<img[^>]*>/gi;
+  const images = html.match(imgRegex) || [];
+  const withoutAlt_list: string[] = [];
+
+  images.forEach(img => {
+    const hasAlt = /alt=["'][^"']*["']/i.test(img);
+    const hasEmptyAlt = /alt=["']\s*["']/i.test(img);
+    if (!hasAlt || hasEmptyAlt) {
+      const srcMatch = img.match(/src=["']([^"']+)["']/i);
+      if (srcMatch) withoutAlt_list.push(srcMatch[1].substring(0, 80));
+    }
+  });
+
+  return { total: images.length, withoutAlt: withoutAlt_list.length, withoutAlt_list };
+}
+
+// ─── Heading Hierarchy Analysis ──────────────────────────────────────
+
+function analyzeHeadingHierarchy(html: string): { total: number; hierarchy: string[]; issues: string[] } {
+  const headingRegex = /<(h[1-6])[^>]*>/gi;
+  const headings: string[] = [];
+  const issues: string[] = [];
+  let match;
+
+  while ((match = headingRegex.exec(html)) !== null) {
+    headings.push(match[1].toLowerCase());
+  }
+
+  // Check hierarchy
+  for (let i = 1; i < headings.length; i++) {
+    const prev = parseInt(headings[i - 1].charAt(1));
+    const curr = parseInt(headings[i].charAt(1));
+    if (curr > prev + 1) {
+      issues.push(`Heading hierarchy skip: ${headings[i - 1].toUpperCase()} → ${headings[i].toUpperCase()} (skipped H${prev + 1})`);
+      break; // Only report first skip
+    }
+  }
+
+  if (headings.length > 0 && headings[0] !== 'h1') {
+    issues.push(`First heading is ${headings[0].toUpperCase()} instead of H1`);
+  }
+
+  return { total: headings.length, hierarchy: headings, issues };
+}
+
+// ─── Security Headers Check ─────────────────────────────────────────
+
+async function checkSecurityHeaders(url: string): Promise<{ https: boolean; hsts: boolean; xFrameOptions: boolean; csp: boolean; xContentType: boolean }> {
+  try {
+    const response = await fetch(url, { method: 'HEAD', signal: AbortSignal.timeout(8000), redirect: 'follow' });
+    const headers = response.headers;
+
+    return {
+      https: url.startsWith('https://'),
+      hsts: !!headers.get('strict-transport-security'),
+      xFrameOptions: !!headers.get('x-frame-options'),
+      csp: !!headers.get('content-security-policy'),
+      xContentType: !!headers.get('x-content-type-options'),
+    };
+  } catch (error) {
+    console.error('Error checking security headers:', error);
+    return { https: url.startsWith('https://'), hsts: false, xFrameOptions: false, csp: false, xContentType: false };
+  }
 }
 
 // ─── Google PageSpeed Insights API ───────────────────────────────────

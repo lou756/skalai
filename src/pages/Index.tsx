@@ -3,6 +3,7 @@ import { SiteHeader } from "@/components/layout/SiteHeader";
 import { SiteFooter } from "@/components/layout/SiteFooter";
 import { HeroSection } from "@/components/landing/HeroSection";
 import { FeaturesSection } from "@/components/landing/FeaturesSection";
+import { ScrollToTop } from "@/components/layout/ScrollToTop";
 
 const Index = () => {
   return (
@@ -19,6 +20,7 @@ const Index = () => {
       </main>
 
       <SiteFooter />
+      <ScrollToTop />
     </div>
   );
 };

@@ -175,6 +175,10 @@ const translations = {
     'history.title': 'Historique des analyses',
     'history.empty': 'Aucune analyse enregistrée pour le moment.',
     'history.recent': '10 dernières',
+    'history.trend': 'Évolution du score',
+    'history.scans': 'scan(s)',
+    'history.stable': 'Stable',
+    'history.since': 'depuis le premier scan',
     // PDF
     'pdf.export': 'Exporter en PDF',
     // PageSpeed Insights
@@ -199,6 +203,10 @@ const translations = {
     // Errors
     'error.inaccessible': 'Inaccessible',
     'error.code': 'Erreur',
+    // 404
+    '404.title': 'Page introuvable',
+    '404.desc': 'La page que vous cherchez n\'existe pas ou a été déplacée.',
+    '404.back': 'Retour à l\'accueil',
     // Methodology page
     'method.backHome': '← Retour à l\'accueil',
     'method.badge': 'Méthodologie 100% transparente',
@@ -394,6 +402,10 @@ const translations = {
     'footer.copyright': '© 2025 SKAL IA. All rights reserved.',
     'error.inaccessible': 'Inaccessible',
     'error.code': 'Error',
+    // 404
+    '404.title': 'Page not found',
+    '404.desc': 'The page you\'re looking for doesn\'t exist or has been moved.',
+    '404.back': 'Back to home',
     // Methodology page
     'method.backHome': '← Back to home',
     'method.badge': '100% Transparent Methodology',
@@ -439,6 +451,10 @@ const translations = {
     'history.title': 'Scan History',
     'history.empty': 'No scans recorded yet.',
     'history.recent': 'Last 10',
+    'history.trend': 'Score evolution',
+    'history.scans': 'scan(s)',
+    'history.stable': 'Stable',
+    'history.since': 'since first scan',
     // PDF
     'pdf.export': 'Export PDF',
     // PageSpeed Insights
