@@ -85,7 +85,7 @@ export function HeroSection({ onAnalyze, isLoading }: HeroSectionProps) {
           className="grid grid-cols-3 gap-4 sm:gap-6 max-w-sm sm:max-w-lg mx-auto mt-10 sm:mt-16"
         >
           {[
-            { icon: BarChart3, value: '7', label: 'SEO categories' },
+            { icon: BarChart3, value: '9', label: 'SEO categories' },
             { icon: Zap, value: '100%', label: 'Real data' },
             { icon: Shield, value: 'A+', label: 'Transparency' },
           ].map((stat, i) => (
