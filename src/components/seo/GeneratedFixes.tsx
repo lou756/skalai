@@ -1,9 +1,11 @@
-import { Download, FileCode, FileText, ShoppingCart, Code, Eye } from "lucide-react";
+import { Download, FileCode, FileText, ShoppingCart, Code, Eye, Link2, Copy, Check, Loader2 } from "lucide-react";
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { useI18n } from "@/lib/i18n";
+import { useToast } from "@/hooks/use-toast";
 import type { GeneratedFix } from "@/lib/api/seo";
 import { cn } from "@/lib/utils";
+import { supabase } from "@/integrations/supabase/client";
 
 interface GeneratedFixesProps {
   fixes: GeneratedFix[];
@@ -33,7 +35,15 @@ export function GeneratedFixes({ fixes }: GeneratedFixesProps) {
 
 function FixCard({ fix }: { fix: GeneratedFix }) {
   const [showPreview, setShowPreview] = useState(false);
+  const [hostedUrl, setHostedUrl] = useState<string | null>(null);
+  const [hosting, setHosting] = useState(false);
+  const [copied, setCopied] = useState(false);
   const { t } = useI18n();
+  const { toast } = useToast();
+
+  const isSitemap = fix.type === 'sitemap_xml';
+  const isRobotsTxt = fix.type === 'robots_txt';
+  const canHost = isSitemap || isRobotsTxt;
 
   const getIcon = () => {
     switch (fix.type) {
@@ -58,6 +68,39 @@ function FixCard({ fix }: { fix: GeneratedFix }) {
     URL.revokeObjectURL(url);
   };
 
+  const handleHostSitemap = async () => {
+    setHosting(true);
+    try {
+      const { data, error } = await supabase.functions.invoke('store-sitemap', {
+        body: {
+          content: fix.content,
+          filename: fix.filename,
+          domain: fix.content.match(/<loc>(https?:\/\/[^/]+)/)?.[1] || 'unknown',
+        },
+      });
+
+      if (error) throw error;
+      if (data?.success && data?.url) {
+        setHostedUrl(data.url);
+        toast({ title: t('fixes.hosted') });
+      } else {
+        throw new Error(data?.error || 'Failed to host file');
+      }
+    } catch (err: any) {
+      toast({ title: t('search.error'), description: err.message, variant: 'destructive' });
+    } finally {
+      setHosting(false);
+    }
+  };
+
+  const handleCopyUrl = async () => {
+    if (!hostedUrl) return;
+    await navigator.clipboard.writeText(hostedUrl);
+    setCopied(true);
+    toast({ title: t('fixes.urlCopied') });
+    setTimeout(() => setCopied(false), 2000);
+  };
+
   return (
     <div className="glass-card rounded-xl p-4">
       <div className="flex items-start justify-between gap-3">
@@ -78,7 +121,7 @@ function FixCard({ fix }: { fix: GeneratedFix }) {
             <p className="text-sm text-muted-foreground mt-0.5">{fix.description}</p>
           </div>
         </div>
-        <div className="flex gap-2 shrink-0">
+        <div className="flex gap-2 shrink-0 flex-wrap justify-end">
           <Button variant="outline" size="sm" onClick={() => setShowPreview(!showPreview)} className="rounded-lg">
             <Eye className="h-3 w-3 mr-1" />
             {showPreview ? t('fixes.hide') : t('fixes.preview')}
@@ -87,8 +130,41 @@ function FixCard({ fix }: { fix: GeneratedFix }) {
             <Download className="h-3 w-3 mr-1" />
             {fix.filename}
           </Button>
+          {canHost && !hostedUrl && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleHostSitemap}
+              disabled={hosting}
+              className="rounded-lg"
+            >
+              {hosting ? <Loader2 className="h-3 w-3 mr-1 animate-spin" /> : <Link2 className="h-3 w-3 mr-1" />}
+              {hosting ? t('fixes.hosting') : t('fixes.sitemapUrl')}
+            </Button>
+          )}
         </div>
       </div>
+
+      {/* Hosted URL display */}
+      {hostedUrl && (
+        <div className="mt-3 pt-3 border-t border-border/50">
+          <div className="flex items-center gap-2 bg-emerald-500/5 border border-emerald-500/20 rounded-lg p-3">
+            <Link2 className="h-4 w-4 text-emerald-500 shrink-0" />
+            <a
+              href={hostedUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-xs text-primary hover:underline truncate flex-1 font-mono"
+            >
+              {hostedUrl}
+            </a>
+            <Button variant="ghost" size="sm" onClick={handleCopyUrl} className="shrink-0 h-7 px-2">
+              {copied ? <Check className="h-3 w-3 text-emerald-500" /> : <Copy className="h-3 w-3" />}
+            </Button>
+          </div>
+        </div>
+      )}
+
       {showPreview && (
         <div className="mt-3 pt-3 border-t border-border/50">
           <pre className="bg-muted/50 rounded-lg p-3 text-xs overflow-auto max-h-64 whitespace-pre-wrap font-mono">

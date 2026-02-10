@@ -1,1 +1,4 @@
 project_id = "chvetkfwxjdvkhbzdjnq"
+
+[functions.store-sitemap]
+verify_jwt = false

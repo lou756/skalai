@@ -17,7 +17,7 @@ import { ConfidenceSection } from "./ConfidenceSection";
 import { ScanMetaBanner } from "./ScanMetaBanner";
 import { CoreWebVitals } from "./CoreWebVitals";
 import { ScanProgressAnimation } from "./ScanProgressAnimation";
-import { ScanHistoryPanel } from "./ScanHistoryPanel";
+import { GSCMerchantStatus } from "./GSCMerchantStatus";
 import { motion } from "framer-motion";
 
 export function SEOAnalyzer() {
@@ -26,7 +26,6 @@ export function SEOAnalyzer() {
   const [url, setUrl] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [result, setResult] = useState<SEOAnalysisResult | null>(null);
-  const [historyKey, setHistoryKey] = useState(0);
 
   const runAnalysis = async (targetUrl: string) => {
     if (!targetUrl.trim()) {
@@ -42,9 +41,7 @@ export function SEOAnalyzer() {
 
       if (response.success && response.data) {
         setResult(response.data);
-        // Save to history
         await saveAnalysis(response.data);
-        setHistoryKey(prev => prev + 1);
         toast({
           title: t('search.complete'),
           description: t('search.scoreResult', { score: response.data.score, fixes: response.data.generatedFixes?.length || 0 }),
@@ -147,6 +144,10 @@ export function SEOAnalyzer() {
           </div>
 
           {result.confidence && <ConfidenceSection indicators={result.confidence} />}
+          
+          {/* GSC & Merchant status */}
+          <GSCMerchantStatus result={result} />
+
           {result.actionReport && <ActionReportSection report={result.actionReport} />}
           {result.generatedFixes && <GeneratedFixes fixes={result.generatedFixes} />}
           {result.pageSpeed && <CoreWebVitals pageSpeed={result.pageSpeed} />}
@@ -193,11 +194,6 @@ export function SEOAnalyzer() {
           <SEODetailSections result={result} />
         </motion.div>
       )}
-
-      {/* History panel - always visible */}
-      <div className="mt-8 sm:mt-12">
-        <ScanHistoryPanel key={historyKey} currentUrl={result?.url} />
-      </div>
 
       {!result && !isLoading && (
         <div className="text-center py-12 sm:py-16 text-muted-foreground">
