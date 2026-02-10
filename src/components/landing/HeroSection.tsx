@@ -1,12 +1,22 @@
+import { useState } from "react";
 import { useI18n } from "@/lib/i18n";
-import { ArrowDown, Shield, BarChart3, Zap } from "lucide-react";
+import { Shield, BarChart3, Zap, Search, Loader2 } from "lucide-react";
 import { motion } from "framer-motion";
+import { Input } from "@/components/ui/input";
+import { Button } from "@/components/ui/button";
 
-export function HeroSection() {
+interface HeroSectionProps {
+  onAnalyze?: (url: string) => void;
+  isLoading?: boolean;
+}
+
+export function HeroSection({ onAnalyze, isLoading }: HeroSectionProps) {
   const { t } = useI18n();
+  const [url, setUrl] = useState("");
 
-  const scrollToAnalyzer = () => {
-    document.getElementById('analyzer')?.scrollIntoView({ behavior: 'smooth' });
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    onAnalyze?.(url);
   };
 
   return (
@@ -41,13 +51,31 @@ export function HeroSection() {
             {t('hero.subtitle')}
           </p>
 
-          <button
-            onClick={scrollToAnalyzer}
-            className="gradient-bg text-primary-foreground px-6 sm:px-8 py-3 sm:py-3.5 rounded-xl text-sm sm:text-base font-semibold hover:opacity-90 transition-all glow-md inline-flex items-center gap-2"
-          >
-            {t('hero.cta')}
-            <ArrowDown className="h-4 w-4" />
-          </button>
+          <form onSubmit={handleSubmit} className="max-w-2xl mx-auto">
+            <div className="flex flex-col sm:flex-row gap-3">
+              <div className="relative flex-1">
+                <Search className="absolute left-3 sm:left-4 top-1/2 -translate-y-1/2 h-4 sm:h-5 w-4 sm:w-5 text-muted-foreground" />
+                <Input
+                  type="text"
+                  value={url}
+                  onChange={(e) => setUrl(e.target.value)}
+                  placeholder={t('search.placeholder')}
+                  className="pl-10 sm:pl-12 h-12 sm:h-13 text-sm sm:text-base rounded-xl border-border/60 bg-card/80 backdrop-blur-sm focus:glow-sm"
+                  disabled={isLoading}
+                />
+              </div>
+              <Button type="submit" disabled={isLoading} className="h-12 sm:h-13 px-6 sm:px-7 rounded-xl gradient-bg border-0 text-primary-foreground font-semibold text-sm sm:text-base glow-md">
+                {isLoading ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    {t('search.loading')}
+                  </>
+                ) : (
+                  t('search.button')
+                )}
+              </Button>
+            </div>
+          </form>
         </motion.div>
 
         <motion.div
