@@ -287,9 +287,9 @@ Deno.serve(async (req) => {
     const metadata = scrapeData.data?.metadata || scrapeData.metadata || {};
     const links = scrapeData.data?.links || scrapeData.links || [];
 
-    // Use Firecrawl Map API for complete site URL discovery
-    const allSiteUrls = await discoverAllUrls(formattedUrl, apiKey);
-    console.log('URLs discovered via Map API:', allSiteUrls.length);
+    // Use Firecrawl Map API + HTML links + existing sitemap for complete URL discovery
+    const allSiteUrls = await discoverAllUrlsEnhanced(formattedUrl, apiKey, links, html);
+    console.log('Total URLs discovered:', allSiteUrls.length);
 
     const meta = extractMetaInfo(html, metadata);
     
@@ -428,9 +428,14 @@ Deno.serve(async (req) => {
   }
 });
 
-// ─── URL Discovery via Map API ───────────────────────────────────────
+// ─── Enhanced URL Discovery: Map API + HTML links + existing sitemap ──
 
-async function discoverAllUrls(url: string, apiKey: string): Promise<string[]> {
+async function discoverAllUrlsEnhanced(url: string, apiKey: string, htmlLinks: string[], html: string): Promise<string[]> {
+  const urlObj = new URL(url);
+  const host = urlObj.host;
+  const allUrls = new Set<string>();
+
+  // 1. Firecrawl Map API (primary source)
   try {
     const response = await fetch('https://api.firecrawl.dev/v1/map', {
       method: 'POST',
@@ -446,16 +451,77 @@ async function discoverAllUrls(url: string, apiKey: string): Promise<string[]> {
     });
 
     const data = await response.json();
-    if (!response.ok || !data.success) {
+    if (response.ok && data.success && data.links) {
+      data.links.forEach((l: string) => allUrls.add(l));
+      console.log('Map API URLs:', data.links.length);
+    } else {
       console.error('Map API error:', data);
-      return [];
     }
-
-    return data.links || [];
   } catch (error) {
     console.error('Error mapping URLs:', error);
-    return [];
   }
+
+  // 2. HTML links from scraped page (fallback / complement)
+  if (htmlLinks && htmlLinks.length > 0) {
+    htmlLinks.forEach(link => {
+      try {
+        const linkUrl = new URL(link, url);
+        if (linkUrl.host === host) {
+          allUrls.add(linkUrl.href.split('#')[0].split('?')[0]);
+        }
+      } catch { /* skip invalid */ }
+    });
+    console.log('After HTML links:', allUrls.size);
+  }
+
+  // 3. Extract links from <a href> in raw HTML
+  const hrefRegex = /href=["'](\/[^"'#?]*|https?:\/\/[^"'#?]*)/gi;
+  let match;
+  while ((match = hrefRegex.exec(html)) !== null) {
+    try {
+      const linkUrl = new URL(match[1], url);
+      if (linkUrl.host === host && !linkUrl.pathname.match(/\.(css|js|png|jpg|jpeg|gif|svg|ico|woff|woff2|ttf|eot|pdf|zip)$/i)) {
+        allUrls.add(linkUrl.href.split('#')[0].split('?')[0]);
+      }
+    } catch { /* skip */ }
+  }
+  console.log('After HTML href extraction:', allUrls.size);
+
+  // 4. Try to parse the site's existing sitemap.xml for additional URLs
+  try {
+    const sitemapUrl = `${urlObj.protocol}//${host}/sitemap.xml`;
+    const sitemapResp = await fetch(sitemapUrl, {
+      headers: { 'User-Agent': 'SKAL-SEO-Analyzer/4.3' },
+      redirect: 'follow',
+    });
+    if (sitemapResp.ok) {
+      const sitemapText = await sitemapResp.text();
+      const locRegex = /<loc>\s*(https?:\/\/[^<]+)\s*<\/loc>/gi;
+      let locMatch;
+      while ((locMatch = locRegex.exec(sitemapText)) !== null) {
+        try {
+          const locUrl = new URL(locMatch[1].trim());
+          if (locUrl.host === host) {
+            allUrls.add(locUrl.href);
+          }
+        } catch { /* skip */ }
+      }
+      console.log('After existing sitemap parsing:', allUrls.size);
+    }
+  } catch (error) {
+    console.log('Could not fetch existing sitemap:', error);
+  }
+
+  // Filter: only valid HTTP(S) URLs, no anchors, clean
+  const result = [...allUrls]
+    .filter(u => u.startsWith('http'))
+    .sort((a, b) => {
+      const depthA = a.replace(/^https?:\/\/[^/]+/, '').split('/').filter(Boolean).length;
+      const depthB = b.replace(/^https?:\/\/[^/]+/, '').split('/').filter(Boolean).length;
+      return depthA - depthB;
+    });
+
+  return result;
 }
 
 // ─── Redirect Chain Analysis ─────────────────────────────────────────
