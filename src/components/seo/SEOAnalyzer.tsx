@@ -20,6 +20,7 @@ import { CoreWebVitals } from "./CoreWebVitals";
 import { ScanProgressAnimation } from "./ScanProgressAnimation";
 import { GSCMerchantStatus } from "./GSCMerchantStatus";
 import { RedirectSection, SchemaOrgSection } from "./SchemaRedirectSections";
+import { MultiPageAnalysis } from "./MultiPageAnalysis";
 import { motion } from "framer-motion";
 
 export interface SEOAnalyzerHandle {
@@ -185,6 +186,10 @@ export const SEOAnalyzer = forwardRef<SEOAnalyzerHandle, SEOAnalyzerProps>(
             {/* Schema.org Analysis */}
             {result.schemaOrgAnalysis && <SchemaOrgSection schemaOrgAnalysis={result.schemaOrgAnalysis} />}
 
+            {/* Multi-page & language analysis */}
+            {result.discoveredLanguages && result.discoveredLanguages.length > 0 && (
+              <MultiPageAnalysis languages={result.discoveredLanguages} baseUrl={result.url} />
+            )}
             {result.issues.length > 0 ? (
               <div className="space-y-4 sm:space-y-6">
                 <h2 className="text-lg sm:text-xl font-semibold" style={{ fontFamily: "'Space Grotesk', sans-serif" }}>
