@@ -198,6 +198,13 @@ export interface SchemaOrgAnalysis {
   recommendations: string[];
 }
 
+export interface DiscoveredLanguage {
+  lang: string;
+  label: string;
+  pages: string[];
+  homepage: string;
+}
+
 export interface SEOAnalysisResult {
   url: string;
   score: number;
@@ -235,6 +242,7 @@ export interface SEOAnalysisResult {
   actionReport: ActionReport;
   redirectAnalysis: RedirectAnalysis;
   schemaOrgAnalysis: SchemaOrgAnalysis;
+  discoveredLanguages: DiscoveredLanguage[];
 }
 
 export type SEOResponse = {

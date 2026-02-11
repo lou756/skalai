@@ -343,6 +343,17 @@ const translations = {
     'lovable.copy': 'Copier',
     'lovable.copied': 'Copié !',
     'lovable.disclaimer': 'Ces prompts sont générés à partir des problèmes réels détectés lors de l\'audit. Copiez-les et soumettez-les pour obtenir les corrections adaptées à votre projet.',
+    // Multi-page analysis
+    'multiPage.title': 'Analyse multi-pages & langues',
+    'multiPage.analyzing': 'Analyse en cours...',
+    'multiPage.analyzeAll': 'Analyser toutes les langues',
+    'multiPage.analyzePage': 'Analyser cette version',
+    'multiPage.scanning': 'Scan en cours...',
+    'multiPage.issues': 'problème(s)',
+    'multiPage.hidePages': 'Masquer les pages',
+    'multiPage.showPages': 'Voir toutes les pages',
+    'multiPage.morePages': 'pages supplémentaires',
+    'multiPage.comparison': 'Comparaison des scores par langue',
   },
   en: {
     'nav.howItWorks': 'How it works',
@@ -666,6 +677,17 @@ const translations = {
     'lovable.copy': 'Copy',
     'lovable.copied': 'Copied!',
     'lovable.disclaimer': 'These prompts are generated from real issues detected during the audit. Copy and submit them to get the appropriate fixes for your project.',
+    // Multi-page analysis
+    'multiPage.title': 'Multi-page & language analysis',
+    'multiPage.analyzing': 'Analyzing...',
+    'multiPage.analyzeAll': 'Analyze all languages',
+    'multiPage.analyzePage': 'Analyze this version',
+    'multiPage.scanning': 'Scanning...',
+    'multiPage.issues': 'issue(s)',
+    'multiPage.hidePages': 'Hide pages',
+    'multiPage.showPages': 'Show all pages',
+    'multiPage.morePages': 'more pages',
+    'multiPage.comparison': 'Score comparison by language',
   },
 } as const;
 

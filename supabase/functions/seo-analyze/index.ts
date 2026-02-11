@@ -176,6 +176,13 @@ interface GSCDetection {
   signals: { signal: string; found: boolean; detail: string }[];
 }
 
+interface DiscoveredLanguage {
+  lang: string;
+  label: string;
+  pages: string[];
+  homepage: string;
+}
+
 interface SEOAnalysisResult {
   url: string;
   score: number;
@@ -224,6 +231,7 @@ interface SEOAnalysisResult {
   actionReport: ActionReport;
   redirectAnalysis: RedirectAnalysis;
   schemaOrgAnalysis: SchemaOrgAnalysis;
+  discoveredLanguages: DiscoveredLanguage[];
 }
 
 Deno.serve(async (req) => {
@@ -350,6 +358,10 @@ Deno.serve(async (req) => {
     
     const actionReport = buildActionReport(issues, generatedFixes, meta, sitemap, robotsTxt, merchantAnalysis, contentAnalysis);
 
+    // Group discovered URLs by language
+    const discoveredLanguages = groupUrlsByLanguage(allSiteUrls, formattedUrl);
+    console.log('Discovered languages:', discoveredLanguages.map(l => `${l.lang} (${l.pages.length} pages)`).join(', '));
+
     const durationMs = Date.now() - startTime;
 
     // Count elements checked
@@ -410,6 +422,7 @@ Deno.serve(async (req) => {
       actionReport,
       redirectAnalysis,
       schemaOrgAnalysis,
+      discoveredLanguages,
     };
 
     console.log('Analysis complete. Score:', score, 'Duration:', durationMs, 'ms, Fixes:', generatedFixes.length, 'URLs:', allSiteUrls.length, 'Schema types:', schemaOrgAnalysis.totalFound, 'Redirects:', redirectAnalysis.totalRedirects);
@@ -522,6 +535,84 @@ async function discoverAllUrlsEnhanced(url: string, apiKey: string, htmlLinks: s
     });
 
   return result;
+}
+
+// ─── Group URLs by Language ──────────────────────────────────────────
+
+const LANG_LABELS: Record<string, string> = {
+  en: 'English', fr: 'Français', es: 'Español', de: 'Deutsch', it: 'Italiano',
+  pt: 'Português', nl: 'Nederlands', ru: 'Русский', ja: '日本語', zh: '中文',
+  ko: '한국어', ar: 'العربية', tr: 'Türkçe', pl: 'Polski', sv: 'Svenska',
+  da: 'Dansk', fi: 'Suomi', nb: 'Norsk', cs: 'Čeština', ro: 'Română',
+  el: 'Ελληνικά', he: 'עברית', th: 'ไทย', vi: 'Tiếng Việt', uk: 'Українська',
+  hu: 'Magyar', bg: 'Български', hr: 'Hrvatski', sk: 'Slovenčina', sl: 'Slovenščina',
+  ca: 'Català', eu: 'Euskara', gl: 'Galego',
+};
+
+function groupUrlsByLanguage(urls: string[], baseUrl: string): DiscoveredLanguage[] {
+  const urlObj = new URL(baseUrl);
+  const basePath = urlObj.pathname.replace(/\/$/, '');
+  
+  // Common language URL patterns: /en/, /fr/, /en-us/, /fr-fr/
+  const langPrefixRegex = /^\/([a-z]{2}(?:-[a-z]{2})?)(?:\/|$)/i;
+  
+  const langGroups: Record<string, string[]> = {};
+  const noLangPages: string[] = [];
+  
+  for (const u of urls) {
+    try {
+      const parsed = new URL(u);
+      const path = parsed.pathname;
+      const match = path.match(langPrefixRegex);
+      
+      if (match) {
+        const lang = match[1].toLowerCase().split('-')[0]; // normalize en-us -> en
+        if (!langGroups[lang]) langGroups[lang] = [];
+        langGroups[lang].push(u);
+      } else {
+        noLangPages.push(u);
+      }
+    } catch { /* skip */ }
+  }
+  
+  const results: DiscoveredLanguage[] = [];
+  
+  // Add language groups that have at least 2 pages (to filter out false positives)
+  for (const [lang, pages] of Object.entries(langGroups)) {
+    // Find the homepage for this language version
+    const sortedPages = pages.sort((a, b) => a.length - b.length);
+    const homepage = sortedPages[0]; // shortest URL is likely the homepage
+    
+    results.push({
+      lang,
+      label: LANG_LABELS[lang] || lang.toUpperCase(),
+      pages: sortedPages,
+      homepage,
+    });
+  }
+  
+  // If no language prefixes found, add the root as default
+  if (results.length === 0 && noLangPages.length > 0) {
+    results.push({
+      lang: 'default',
+      label: 'Default',
+      pages: noLangPages,
+      homepage: baseUrl,
+    });
+  } else if (noLangPages.length > 0) {
+    // Add root pages as "default" group
+    results.push({
+      lang: 'root',
+      label: 'Root / Default',
+      pages: noLangPages,
+      homepage: baseUrl,
+    });
+  }
+  
+  // Sort by page count descending
+  results.sort((a, b) => b.pages.length - a.pages.length);
+  
+  return results;
 }
 
 // ─── Redirect Chain Analysis ─────────────────────────────────────────
