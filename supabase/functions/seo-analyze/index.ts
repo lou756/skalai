@@ -266,19 +266,36 @@ Deno.serve(async (req) => {
     console.log('Analyzing URL:', formattedUrl);
     const startTime = Date.now();
 
-    // Scrape the page
-    const scrapeResponse = await fetch('https://api.firecrawl.dev/v1/scrape', {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${apiKey}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        url: formattedUrl,
-        formats: ['html', 'markdown', 'links'],
-        onlyMainContent: false,
+    // Dual scrape: full page (for HTML/meta analysis) + main content only (for keyword analysis)
+    // Both run in parallel to avoid extra latency
+    const [scrapeResponse, mainContentResponse] = await Promise.all([
+      fetch('https://api.firecrawl.dev/v1/scrape', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${apiKey}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          url: formattedUrl,
+          formats: ['html', 'markdown', 'links'],
+          onlyMainContent: false,
+          waitFor: 2000, // Force fresh browser render, bypass CDN cache
+        }),
       }),
-    });
+      fetch('https://api.firecrawl.dev/v1/scrape', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${apiKey}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          url: formattedUrl,
+          formats: ['markdown'],
+          onlyMainContent: true, // Main content only for keyword extraction
+          waitFor: 2000,
+        }),
+      }),
+    ]);
 
     const scrapeData = await scrapeResponse.json();
     
@@ -294,6 +311,21 @@ Deno.serve(async (req) => {
     const markdown = scrapeData.data?.markdown || scrapeData.markdown || '';
     const metadata = scrapeData.data?.metadata || scrapeData.metadata || {};
     const links = scrapeData.data?.links || scrapeData.links || [];
+
+    // Extract main content markdown for keyword analysis (falls back to full markdown)
+    let mainContentMarkdown = markdown;
+    try {
+      if (mainContentResponse.ok) {
+        const mainContentData = await mainContentResponse.json();
+        const mcMarkdown = mainContentData.data?.markdown || mainContentData.markdown || '';
+        if (mcMarkdown.length > 50) {
+          mainContentMarkdown = mcMarkdown;
+          console.log('Using main-content-only markdown for keywords (' + mcMarkdown.length + ' chars vs ' + markdown.length + ' full)');
+        }
+      }
+    } catch (e) {
+      console.log('Main content scrape fallback to full markdown');
+    }
 
     // Use Firecrawl Map API + HTML links + existing sitemap for complete URL discovery
     const allSiteUrls = await discoverAllUrlsEnhanced(formattedUrl, apiKey, links, html);
@@ -314,7 +346,7 @@ Deno.serve(async (req) => {
     const brokenLinks = await checkBrokenLinks(links.slice(0, 50));
     const gscDetection = detectGSC(html, sitemap, robotsTxt);
     const gscInstructions = generateGSCInstructions(formattedUrl, sitemap, robotsTxt);
-    const contentAnalysis = await analyzeContent(markdown, meta, formattedUrl);
+    const contentAnalysis = await analyzeContent(mainContentMarkdown, meta, formattedUrl);
     const hreflangAnalysis = analyzeHreflang(html, meta.language, sitemap);
     const merchantAnalysis = await analyzeMerchantDataAdvanced(html, allSiteUrls, apiKey);
     // Run merchant compliance check if e-commerce detected
@@ -1762,10 +1794,22 @@ async function checkSitemap(url: string, robotsContent: string | null) {
       if (sitemapMatch) sitemapUrl = sitemapMatch[1];
     }
 
+    // Detect cross-domain sitemap reference
+    let isCrossDomain = false;
+    let sitemapDomain = '';
+    try {
+      const sitemapUrlObj = new URL(sitemapUrl);
+      sitemapDomain = sitemapUrlObj.host;
+      isCrossDomain = sitemapDomain !== urlObj.host;
+      if (isCrossDomain) {
+        console.log(`Cross-domain sitemap detected: ${sitemapDomain} vs ${urlObj.host}`);
+      }
+    } catch { /* ignore */ }
+
     const response = await fetch(sitemapUrl, { signal: AbortSignal.timeout(10000) });
     
     if (!response.ok) {
-      return { found: false, url: null, error: 'Sitemap not found', isValid: false, urlCount: null };
+      return { found: false, url: null, error: 'Sitemap not found', isValid: false, urlCount: null, isCrossDomain: false, sitemapDomain: '', foreignUrlCount: 0 };
     }
 
     const sitemapContent = await response.text();
@@ -1774,10 +1818,23 @@ async function checkSitemap(url: string, robotsContent: string | null) {
     const urlMatches = sitemapContent.match(/<loc>/gi);
     const urlCount = urlMatches ? urlMatches.length : 0;
 
-    return { found: true, url: sitemapUrl, error: null, isValid, urlCount };
+    // Check if sitemap URLs actually belong to the analyzed domain
+    let foreignUrlCount = 0;
+    const locUrls = sitemapContent.match(/<loc>([^<]+)<\/loc>/gi) || [];
+    locUrls.forEach(loc => {
+      const locUrl = loc.replace(/<\/?loc>/gi, '').trim();
+      try {
+        if (new URL(locUrl).host !== urlObj.host) foreignUrlCount++;
+      } catch { /* ignore */ }
+    });
+    if (foreignUrlCount > 0) {
+      console.log(`Sitemap contains ${foreignUrlCount} URLs from foreign domains (out of ${urlCount})`);
+    }
+
+    return { found: true, url: sitemapUrl, error: null, isValid, urlCount, isCrossDomain, sitemapDomain, foreignUrlCount };
   } catch (error) {
     console.error('Error checking sitemap:', error);
-    return { found: false, url: null, error: error instanceof Error ? error.message : 'Failed to check sitemap', isValid: false, urlCount: null };
+    return { found: false, url: null, error: error instanceof Error ? error.message : 'Failed to check sitemap', isValid: false, urlCount: null, isCrossDomain: false, sitemapDomain: '', foreignUrlCount: 0 };
   }
 }
 
@@ -2752,6 +2809,16 @@ function generateIssues(
     issues.push({ id: `issue-${issueId++}`, issue: 'Missing XML Sitemap', impact: 'Pages may not be indexed.', fix: 'Deploy the sitemap generated by SKAL IA.', priority: 'Medium', category: 'Crawling', fixType: 'automated' });
   } else if (!sitemap.isValid) {
     issues.push({ id: `issue-${issueId++}`, issue: 'Invalid sitemap', impact: 'Google cannot read it.', fix: 'Verify the XML structure.', priority: 'High', category: 'Crawling', fixType: 'semi-automated' });
+  }
+
+  // Cross-domain sitemap detection
+  if (sitemap.isCrossDomain && sitemap.sitemapDomain) {
+    issues.push({ id: `issue-${issueId++}`, issue: `Sitemap hosted on external domain (${sitemap.sitemapDomain})`, impact: 'Your sitemap is on a third-party server. If that server goes down, Google loses your sitemap.', fix: `Host the sitemap on your own domain (${new URL(url).host}/sitemap.xml) and update robots.txt.`, priority: 'High', category: 'Crawling', fixType: 'manual' });
+  }
+
+  // Foreign URLs in sitemap
+  if (sitemap.foreignUrlCount && sitemap.foreignUrlCount > 0) {
+    issues.push({ id: `issue-${issueId++}`, issue: `Sitemap contains ${sitemap.foreignUrlCount} URL(s) from other domains`, impact: 'Google ignores sitemap entries that don\'t match your domain. These URLs waste crawl budget.', fix: 'Remove all URLs from other domains. Only include URLs belonging to your site.', priority: 'High', category: 'Crawling', fixType: 'manual' });
   }
 
   if (!meta.canonical) {

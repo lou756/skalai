@@ -74,6 +74,30 @@ export function SEODetailSections({ result }: SEODetailSectionsProps) {
                 {result.sitemap.isValid ? `✓ ${t('detail.yes')}` : `✗ ${t('detail.no')}`}
               </span>
             </div>
+
+            {/* Cross-domain sitemap warning */}
+            {result.sitemap.isCrossDomain && (
+              <div className="bg-destructive/10 border border-destructive/20 rounded-lg p-3 mt-3">
+                <p className="text-sm font-medium text-destructive">
+                  ⚠️ {t('detail.sitemapCrossDomain')}
+                </p>
+                <p className="text-xs text-destructive/80 mt-1">
+                  {t('detail.sitemapCrossDomainDesc', { domain: result.sitemap.sitemapDomain || '' })}
+                </p>
+              </div>
+            )}
+
+            {/* Foreign URLs in sitemap warning */}
+            {result.sitemap.foreignUrlCount && result.sitemap.foreignUrlCount > 0 && (
+              <div className="bg-amber-500/10 border border-amber-500/20 rounded-lg p-3 mt-3">
+                <p className="text-sm font-medium text-amber-600">
+                  ⚠️ {t('detail.sitemapForeignUrls', { count: result.sitemap.foreignUrlCount })}
+                </p>
+                <p className="text-xs text-amber-600/80 mt-1">
+                  {t('detail.sitemapForeignUrlsDesc')}
+                </p>
+              </div>
+            )}
           </div>
         </div>
       )}
