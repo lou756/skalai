@@ -862,10 +862,17 @@ function calculateWeightedScore(
   const indexMax = 20;
   if (robotsTxt.found && !robotsTxt.blocksGooglebot) indexScore += 6;
   else if (robotsTxt.found) indexScore += 2;
+  // No robots.txt = 0 points (not a bonus)
   if (sitemap.found && sitemap.isValid) indexScore += 6;
   else if (sitemap.found) indexScore += 3;
-  if (!meta.robots?.includes('noindex')) indexScore += 5;
-  if (!meta.robots?.includes('nofollow')) indexScore += 3;
+  // Explicitly check for noindex - only award if robots meta actually exists and allows indexing
+  if (meta.robots) {
+    if (!meta.robots.includes('noindex')) indexScore += 5;
+    if (!meta.robots.includes('nofollow')) indexScore += 3;
+  } else {
+    // No robots meta tag at all = neutral (3 pts instead of 8)
+    indexScore += 3;
+  }
   breakdown.push({
     category: 'Indexability',
     score: Math.min(indexScore, indexMax),
@@ -894,9 +901,8 @@ function calculateWeightedScore(
     if (pageSpeed.performanceScore >= 90) perfScore += 9;
     else if (pageSpeed.performanceScore >= 50) perfScore += 5;
     else if (pageSpeed.performanceScore >= 25) perfScore += 2;
-  } else {
-    perfScore += 4;
   }
+  // No PageSpeed data = 0 bonus (not 4 by default)
   const psiLabel = pageSpeed.performanceScore !== null ? `PSI: ${pageSpeed.performanceScore}/100` : 'PSI: N/A';
   breakdown.push({
     category: 'Mobile & Performance',
@@ -905,17 +911,23 @@ function calculateWeightedScore(
     details: `Viewport: ${performance.hasViewportMeta ? '✓' : '✗'} | Lazy loading: ${performance.hasLazyLoading ? '✓' : '✗'} | ${psiLabel}`,
   });
 
-  // 6. Links Health (8 points max)
-  let linksScore = 8;
+  // 6. Links Health (8 points max) - penalize empty sites
+  let linksScore = 0;
   const linksMax = 8;
-  if (brokenLinks.length > 0) {
-    linksScore = Math.max(0, 8 - brokenLinks.length * 2);
+  if (brokenLinks.length === 0 && contentAnalysis.wordCount > 50) {
+    // Only award full points if there's actual content and no broken links
+    linksScore = 8;
+  } else if (brokenLinks.length === 0 && contentAnalysis.wordCount > 0) {
+    linksScore = 4; // Some content, no broken links
+  } else if (brokenLinks.length > 0) {
+    linksScore = Math.max(0, 6 - brokenLinks.length * 2);
   }
+  // Empty/minimal site = 0 points
   breakdown.push({
     category: 'Links Health',
     score: Math.min(linksScore, linksMax),
     maxScore: linksMax,
-    details: brokenLinks.length === 0 ? `No broken links detected (${30} checked)` : `${brokenLinks.length} broken link(s) found`,
+    details: contentAnalysis.wordCount < 10 ? 'Insufficient content to evaluate links' : brokenLinks.length === 0 ? `No broken links detected` : `${brokenLinks.length} broken link(s) found`,
   });
 
   // 7. Internationalization (7 points max)
@@ -925,9 +937,8 @@ function calculateWeightedScore(
   if (hreflangAnalysis.detected.length > 0) {
     i18nScore += 2;
     if (hreflangAnalysis.issues.length === 0) i18nScore += 2;
-  } else if (meta.language) {
-    i18nScore += 4;
   }
+  // Single language with lang attribute = 3 pts max (not 7)
   breakdown.push({
     category: 'Internationalization',
     score: Math.min(i18nScore, i18nMax),
@@ -935,18 +946,19 @@ function calculateWeightedScore(
     details: meta.language ? `Lang: ${meta.language} | Versions: ${hreflangAnalysis.detected.length || 'single language'}` : 'No language declared',
   });
 
-  // 8. Image Accessibility (5 points max)
-  let imgScore = 5;
+  // 8. Image Accessibility (5 points max) - penalize no images
+  let imgScore = 0;
   const imgMax = 5;
   if (imageAnalysis.total > 0) {
     const altRatio = 1 - (imageAnalysis.withoutAlt / imageAnalysis.total);
     imgScore = Math.round(altRatio * 5);
   }
+  // No images = 0 points (not 5 by default - images are expected on real sites)
   breakdown.push({
     category: 'Image Accessibility',
     score: Math.min(imgScore, imgMax),
     maxScore: imgMax,
-    details: imageAnalysis.total === 0 ? 'No images found' : `${imageAnalysis.total - imageAnalysis.withoutAlt}/${imageAnalysis.total} images have alt text`,
+    details: imageAnalysis.total === 0 ? 'No images found on page' : `${imageAnalysis.total - imageAnalysis.withoutAlt}/${imageAnalysis.total} images have alt text`,
   });
 
   // 9. Security & HTTPS (5 points max)
