@@ -122,9 +122,17 @@ export interface GeneratedFix {
   status: 'auto_generated' | 'needs_review';
 }
 
+export interface LovablePrompt {
+  title: string;
+  prompt: string;
+  category: 'seo' | 'merchant' | 'performance' | 'content' | 'security';
+  priority: 'High' | 'Medium' | 'Low';
+}
+
 export interface ActionReport {
   automated: { action: string; status: string; details: string }[];
   manual: { action: string; instructions: string; priority: 'High' | 'Medium' | 'Low' }[];
+  lovablePrompts: LovablePrompt[];
 }
 
 export interface ScoreBreakdown {
