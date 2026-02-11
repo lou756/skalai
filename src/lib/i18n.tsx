@@ -337,12 +337,12 @@ const translations = {
     'merchant.step5': 'Assurez-vous que chaque produit a : nom, prix, disponibilité, image, GTIN/MPN, et données structurées JSON-LD.',
     'merchant.step6': 'Soumettez votre flux et attendez l\'approbation de Google (généralement 3-5 jours ouvrables).',
     // Lovable prompts section
-    'lovable.title': 'Solutions à soumettre à Lovable',
+    'lovable.title': 'Solutions',
     'lovable.subtitle': 'Prompts prêts à copier-coller pour corriger les problèmes détectés',
     'lovable.solutions': 'solution(s)',
     'lovable.copy': 'Copier',
     'lovable.copied': 'Copié !',
-    'lovable.disclaimer': 'Ces prompts sont générés à partir des problèmes réels détectés lors de l\'audit. Copiez-les et soumettez-les directement à Lovable pour obtenir les corrections adaptées à votre projet.',
+    'lovable.disclaimer': 'Ces prompts sont générés à partir des problèmes réels détectés lors de l\'audit. Copiez-les et soumettez-les pour obtenir les corrections adaptées à votre projet.',
   },
   en: {
     'nav.howItWorks': 'How it works',
@@ -660,12 +660,12 @@ const translations = {
     'merchant.step5': 'Make sure each product has: name, price, availability, image, GTIN/MPN, and JSON-LD structured data.',
     'merchant.step6': 'Submit your feed and wait for Google approval (usually 3-5 business days).',
     // Lovable prompts section
-    'lovable.title': 'Solutions for Lovable',
+    'lovable.title': 'Solutions',
     'lovable.subtitle': 'Ready-to-use prompts to fix detected issues',
     'lovable.solutions': 'solution(s)',
     'lovable.copy': 'Copy',
     'lovable.copied': 'Copied!',
-    'lovable.disclaimer': 'These prompts are generated from real issues detected during the audit. Copy and submit them directly to Lovable to get the appropriate fixes for your project.',
+    'lovable.disclaimer': 'These prompts are generated from real issues detected during the audit. Copy and submit them to get the appropriate fixes for your project.',
   },
 } as const;
 
