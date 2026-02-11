@@ -348,7 +348,7 @@ Deno.serve(async (req) => {
     // Generate autonomous fixes - use ALL discovered URLs for sitemap
     const generatedFixes = generateAutonomousFixes(formattedUrl, meta, robotsTxt, sitemap, contentAnalysis, merchantAnalysis, allSiteUrls.length > 0 ? allSiteUrls : links);
     
-    const actionReport = buildActionReport(issues, generatedFixes, meta, sitemap, robotsTxt, merchantAnalysis);
+    const actionReport = buildActionReport(issues, generatedFixes, meta, sitemap, robotsTxt, merchantAnalysis, contentAnalysis);
 
     const durationMs = Date.now() - startTime;
 
@@ -1244,7 +1244,8 @@ function buildActionReport(
   meta: ReturnType<typeof extractMetaInfo>,
   sitemap: Awaited<ReturnType<typeof checkSitemap>>,
   robotsTxt: Awaited<ReturnType<typeof checkRobotsTxt>>,
-  merchantAnalysis: MerchantAnalysis
+  merchantAnalysis: MerchantAnalysis,
+  contentAnalysis: ContentAnalysis
 ): ActionReport {
   const automated: ActionReport['automated'] = [];
   const manual: ActionReport['manual'] = [];
