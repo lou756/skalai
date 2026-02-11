@@ -12,6 +12,7 @@ import { SEOIssueCard } from "./SEOIssueCard";
 import { SEOChecklist } from "./SEOChecklist";
 import { GeneratedFixes } from "./GeneratedFixes";
 import { ActionReportSection } from "./ActionReportSection";
+import { LovablePromptsSection } from "./LovablePromptsSection";
 import { SEODetailSections } from "./SEODetailSections";
 import { ConfidenceSection } from "./ConfidenceSection";
 import { ScanMetaBanner } from "./ScanMetaBanner";
@@ -172,6 +173,9 @@ export const SEOAnalyzer = forwardRef<SEOAnalyzerHandle, SEOAnalyzerProps>(
             <GSCMerchantStatus result={result} />
 
             {result.actionReport && <ActionReportSection report={result.actionReport} />}
+            {result.actionReport?.lovablePrompts && result.actionReport.lovablePrompts.length > 0 && (
+              <LovablePromptsSection prompts={result.actionReport.lovablePrompts} />
+            )}
             {result.generatedFixes && <GeneratedFixes fixes={result.generatedFixes} />}
             {result.pageSpeed && <CoreWebVitals pageSpeed={result.pageSpeed} pageSpeedDesktop={result.pageSpeedDesktop} />}
 
