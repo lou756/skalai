@@ -39,27 +39,27 @@ export function GSCMerchantStatus({ result }: GSCMerchantStatusProps) {
   };
 
   const getConfidenceLabel = (confidence: number) => {
-    if (confidence >= 70) return 'Éligibilité probable';
-    if (confidence >= 40) return 'Signaux partiels';
-    if (confidence > 0) return 'Peu probable';
-    return 'Non détecté';
+    if (confidence >= 70) return t('gsc.eligibilityProbable');
+    if (confidence >= 40) return t('gsc.partialSignals');
+    if (confidence > 0) return t('gsc.unlikely');
+    return t('gsc.notDetectedLabel');
   };
 
   const gscSteps = [
-    { step: "1", text: `Accédez à Google Search Console : https://search.google.com/search-console`, url: "https://search.google.com/search-console" },
-    { step: "2", text: `Cliquez sur "Ajouter une propriété" et entrez votre domaine : ${result.url}` },
-    { step: "3", text: `Vérifiez la propriété via l'une des méthodes proposées (DNS, balise HTML, fichier HTML, Google Analytics, Google Tag Manager).` },
-    { step: "4", text: `Une fois vérifié, soumettez votre sitemap : ${result.sitemap.url || result.url + '/sitemap.xml'}` },
-    { step: "5", text: `Attendez 24-48h pour que Google indexe votre site. Consultez le rapport de couverture pour voir les pages indexées.` },
+    { step: "1", text: `${t('gsc.step1')} : https://search.google.com/search-console`, url: "https://search.google.com/search-console" },
+    { step: "2", text: `${t('gsc.step2')} : ${result.url}` },
+    { step: "3", text: t('gsc.step3') },
+    { step: "4", text: `${t('gsc.step4')} : ${result.sitemap.url || result.url + '/sitemap.xml'}` },
+    { step: "5", text: t('gsc.step5') },
   ];
 
   const merchantSteps = [
-    { step: "1", text: `Accédez à Google Merchant Center : https://merchants.google.com`, url: "https://merchants.google.com" },
-    { step: "2", text: `Créez un compte ou connectez-vous, puis ajoutez les informations de votre entreprise.` },
-    { step: "3", text: `Vérifiez et revendiquez l'URL de votre site web.` },
-    { step: "4", text: `Ajoutez vos produits via un flux de données (le fichier CSV a été généré par SKAL IA si des produits ont été détectés).` },
-    { step: "5", text: `Assurez-vous que chaque produit a : nom, prix, disponibilité, image, GTIN/MPN, et données structurées JSON-LD.` },
-    { step: "6", text: `Soumettez votre flux et attendez l'approbation de Google (généralement 3-5 jours ouvrables).` },
+    { step: "1", text: `${t('merchant.step1')} : https://merchants.google.com`, url: "https://merchants.google.com" },
+    { step: "2", text: t('merchant.step2') },
+    { step: "3", text: t('merchant.step3') },
+    { step: "4", text: t('merchant.step4') },
+    { step: "5", text: t('merchant.step5') },
+    { step: "6", text: t('merchant.step6') },
   ];
 
   const getCategoryIcon = (category: string) => {
@@ -95,7 +95,7 @@ export function GSCMerchantStatus({ result }: GSCMerchantStatusProps) {
                   <XCircle className="h-4 w-4 text-muted-foreground shrink-0" />
                 )}
                 <span className="text-sm font-medium">
-                  {hasGSC ? 'Google Search Console détecté' : 'Google Search Console'}
+                  {hasGSC ? t('gsc.detected') : 'Google Search Console'}
                 </span>
                 {gscConfidence > 0 && (
                   <span className={cn(
@@ -109,8 +109,8 @@ export function GSCMerchantStatus({ result }: GSCMerchantStatusProps) {
               </div>
               <p className="text-xs text-muted-foreground mt-0.5">
                 {hasGSC
-                  ? `${gscDetection.signals.filter(s => s.found).length}/${gscDetection.signals.length} signaux positifs. Forte probabilité que GSC soit configuré.`
-                  : "Signaux insuffisants pour confirmer la configuration de Google Search Console."}
+                  ? t('gsc.positiveSignals', { found: gscDetection.signals.filter(s => s.found).length, total: gscDetection.signals.length })
+                  : t('gsc.insufficientSignals')}
               </p>
             </div>
           </div>
@@ -122,7 +122,7 @@ export function GSCMerchantStatus({ result }: GSCMerchantStatusProps) {
                 className="flex items-center gap-1 text-xs text-primary hover:underline font-medium mb-2"
               >
                 {showGSCSignals ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
-                Voir les {gscDetection.signals.length} signaux analysés
+                {t('gsc.showSignals', { count: gscDetection.signals.length })}
               </button>
               {showGSCSignals && (
                 <div className="space-y-1.5 mb-3">
@@ -197,7 +197,7 @@ export function GSCMerchantStatus({ result }: GSCMerchantStatusProps) {
                   <XCircle className="h-4 w-4 text-muted-foreground shrink-0" />
                 )}
                 <span className="text-sm font-medium">
-                  {isEcommerce ? 'Éligibilité Merchant Center' : 'Site non e-commerce'}
+                  {isEcommerce ? t('merchant.eligibility') : t('merchant.notEcommerce')}
                 </span>
                 {isEcommerce && (
                   <span className={cn(
@@ -211,8 +211,13 @@ export function GSCMerchantStatus({ result }: GSCMerchantStatusProps) {
               </div>
               <p className="text-xs text-muted-foreground mt-0.5">
                 {isEcommerce
-                  ? `${merchantSignals.filter(s => s.found).length}/${merchantSignals.length} signaux détectés. ${result.merchantAnalysis.productPagesFound || 0} URL(s) produit, ${result.merchantAnalysis.products.length} produit(s) analysés.`
-                  : "Aucun signal e-commerce détecté. Si vous vendez des produits, configurez Google Merchant Center."}
+                  ? t('merchant.signalsDetected', {
+                      found: merchantSignals.filter(s => s.found).length,
+                      total: merchantSignals.length,
+                      pages: result.merchantAnalysis.productPagesFound || 0,
+                      products: result.merchantAnalysis.products.length,
+                    })
+                  : t('merchant.noSignals')}
               </p>
             </div>
           </div>
@@ -224,7 +229,7 @@ export function GSCMerchantStatus({ result }: GSCMerchantStatusProps) {
                 className="flex items-center gap-1 text-xs text-primary hover:underline font-medium mb-2"
               >
                 {showSignals ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
-                Voir les {merchantSignals.length} signaux analysés
+                {t('merchant.showSignals', { count: merchantSignals.length })}
               </button>
               {showSignals && (
                 <div className="space-y-1.5 mb-3">
@@ -241,7 +246,7 @@ export function GSCMerchantStatus({ result }: GSCMerchantStatusProps) {
                             {sig.signal}
                           </span>
                           <span className="text-[10px] text-muted-foreground">
-                            (poids: {sig.weight}%)
+                            ({t('merchant.weight')}: {sig.weight}%)
                           </span>
                         </div>
                         <p className="text-[11px] text-muted-foreground leading-tight">{sig.detail}</p>
@@ -254,8 +259,7 @@ export function GSCMerchantStatus({ result }: GSCMerchantStatusProps) {
               <div className="flex items-start gap-1.5 p-2 rounded-lg bg-muted/50 mt-2">
                 <Shield className="h-3 w-3 text-muted-foreground shrink-0 mt-0.5" />
                 <p className="text-[10px] text-muted-foreground leading-tight">
-                  Cette analyse vérifie l'<strong>éligibilité technique</strong> au Merchant Center (balisage, structure, signaux). 
-                  Elle ne peut pas confirmer si un compte Merchant Center est réellement actif, car cette information n'est pas publique.
+                  {t('merchant.technicalEligibility')}
                 </p>
               </div>
             </>
@@ -313,17 +317,17 @@ export function GSCMerchantStatus({ result }: GSCMerchantStatusProps) {
                 ) : (
                   <XCircle className="h-4 w-4 text-destructive shrink-0" />
                 )}
-                <span className="text-sm font-medium">Conformité Merchant Center</span>
+                <span className="text-sm font-medium">{t('merchant.complianceTitle')}</span>
                 <span className={cn(
                   "text-[10px] px-1.5 py-0.5 rounded-full font-medium",
                   getConfidenceBg(compliance.score),
                   getConfidenceColor(compliance.score)
                 )}>
-                  {compliance.score}% — {compliance.checks.filter(c => c.found).length}/{compliance.checks.length} critères
+                  {compliance.score}% — {t('merchant.complianceCriteria', { found: compliance.checks.filter(c => c.found).length, total: compliance.checks.length })}
                 </span>
               </div>
               <p className="text-xs text-muted-foreground mt-0.5">
-                Vérification des pages et critères métier requis par Google Merchant Center pour l'approbation des produits.
+                {t('merchant.complianceDesc')}
               </p>
             </div>
           </div>
@@ -333,13 +337,12 @@ export function GSCMerchantStatus({ result }: GSCMerchantStatusProps) {
             className="flex items-center gap-1 text-xs text-primary hover:underline font-medium mb-2"
           >
             {showCompliance ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
-            Voir les {compliance.checks.length} critères vérifiés
+            {t('merchant.showCriteria', { count: compliance.checks.length })}
           </button>
 
           {showCompliance && (
             <div className="space-y-1.5 mb-3">
               {compliance.checks.map((check, i) => {
-                // Icon logic: content analyzed + valid = green, analyzed + invalid = amber, found but not analyzed = blue, missing = red
                 const getCheckIcon = () => {
                   if (!check.found) return <XCircle className="h-3.5 w-3.5 text-destructive shrink-0 mt-0.5" />;
                   if (check.contentAnalyzed && check.contentValid) return <CheckCircle2 className="h-3.5 w-3.5 text-emerald-500 shrink-0 mt-0.5" />;
@@ -370,12 +373,12 @@ export function GSCMerchantStatus({ result }: GSCMerchantStatusProps) {
                               ? "bg-emerald-500/10 text-emerald-600" 
                               : "bg-amber-500/10 text-amber-600"
                           )}>
-                            {check.contentValid ? 'Contenu conforme' : 'Contenu insuffisant'}
+                            {check.contentValid ? t('merchant.contentValid') : t('merchant.contentInsufficient')}
                           </span>
                         )}
                         {check.found && !check.contentAnalyzed && !['product_quality', 'trust', 'identity', 'technical'].includes(check.category) && (
                           <span className="text-[9px] px-1 py-0.5 rounded bg-blue-500/10 text-blue-600 font-medium">
-                            Non analysé
+                            {t('merchant.notAnalyzed')}
                           </span>
                         )}
                         {check.pageUrl && (
@@ -413,8 +416,7 @@ export function GSCMerchantStatus({ result }: GSCMerchantStatusProps) {
           <div className="flex items-start gap-1.5 p-2 rounded-lg bg-primary/5 border border-primary/10 mt-3">
             <Shield className="h-3 w-3 text-primary shrink-0 mt-0.5" />
             <p className="text-[10px] text-muted-foreground leading-tight">
-              Chaque page de politique est <strong>scrapée et analysée par IA</strong> pour vérifier la conformité du contenu aux exigences Google Merchant Center. 
-              Un score de 100% indique que toutes les pages sont présentes et leur contenu répond aux critères. L'approbation finale reste à la discrétion de Google.
+              {t('merchant.complianceDisclaimer')}
             </p>
           </div>
         </div>

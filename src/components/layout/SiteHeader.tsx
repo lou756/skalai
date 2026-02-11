@@ -1,14 +1,15 @@
-import { Link, useLocation } from "react-router-dom";
+import { Link, useLocation, useNavigate } from "react-router-dom";
 import { LanguageSwitcher } from "@/components/seo/LanguageSwitcher";
 import { useI18n } from "@/lib/i18n";
 import { cn } from "@/lib/utils";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { Menu, X, Shield } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 
 export function SiteHeader() {
   const { t } = useI18n();
   const location = useLocation();
+  const navigate = useNavigate();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [isAdmin, setIsAdmin] = useState(false);
 
@@ -39,6 +40,18 @@ export function SiteHeader() {
     });
     return () => subscription.unsubscribe();
   }, []);
+
+  const handleAnalyzerClick = useCallback((e: React.MouseEvent) => {
+    e.preventDefault();
+    if (location.pathname === '/') {
+      document.getElementById('analyzer')?.scrollIntoView({ behavior: 'smooth' });
+    } else {
+      navigate('/');
+      setTimeout(() => {
+        document.getElementById('analyzer')?.scrollIntoView({ behavior: 'smooth' });
+      }, 300);
+    }
+  }, [location.pathname, navigate]);
 
   const navLinks = [
     { href: "/how-it-works", label: t('nav.howItWorks') },
@@ -73,12 +86,13 @@ export function SiteHeader() {
                 {link.label}
               </Link>
             ))}
-            <Link
-              to="/#analyzer"
+            <a
+              href="/#analyzer"
+              onClick={handleAnalyzerClick}
               className="text-sm font-medium gradient-bg text-primary-foreground px-4 py-2 rounded-lg hover:opacity-90 transition-opacity"
             >
               {t('nav.analyze')}
-            </Link>
+            </a>
             {isAdmin && (
               <Link
                 to="/admin"
@@ -123,13 +137,16 @@ export function SiteHeader() {
                 {link.label}
               </Link>
             ))}
-            <Link
-              to="/#analyzer"
-              onClick={() => setMobileMenuOpen(false)}
+            <a
+              href="/#analyzer"
+              onClick={(e) => {
+                setMobileMenuOpen(false);
+                handleAnalyzerClick(e);
+              }}
               className="block mx-3 mt-2 text-center text-sm font-medium gradient-bg text-primary-foreground px-4 py-2.5 rounded-lg"
             >
               {t('nav.analyze')}
-            </Link>
+            </a>
           </div>
         )}
       </div>

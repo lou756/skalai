@@ -1,5 +1,6 @@
 import { ArrowRight, AlertTriangle, CheckCircle2, RefreshCw, Code2, Blocks } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { useI18n } from "@/lib/i18n";
 import type { RedirectAnalysis, SchemaOrgAnalysis } from "@/lib/api/seo";
 
 interface RedirectSectionProps {
@@ -7,19 +8,21 @@ interface RedirectSectionProps {
 }
 
 export function RedirectSection({ redirectAnalysis }: RedirectSectionProps) {
+  const { t } = useI18n();
+
   if (redirectAnalysis.totalRedirects === 0 && redirectAnalysis.issues.length === 0) {
     return (
       <div className="space-y-3">
         <div className="flex items-center gap-2">
           <RefreshCw className="h-5 w-5 text-emerald-500" />
           <h2 className="text-lg sm:text-xl font-semibold" style={{ fontFamily: "'Space Grotesk', sans-serif" }}>
-            Redirections
+            {t('redirect.title')}
           </h2>
         </div>
         <div className="glass-card rounded-xl p-4 border-emerald-500/20">
           <p className="text-sm text-emerald-600 flex items-center gap-2">
             <CheckCircle2 className="h-4 w-4" />
-            Aucune redirection détectée. L'URL est directement accessible.
+            {t('redirect.noRedirect')}
           </p>
         </div>
       </div>
@@ -31,7 +34,7 @@ export function RedirectSection({ redirectAnalysis }: RedirectSectionProps) {
       <div className="flex items-center gap-2">
         <RefreshCw className="h-5 w-5 text-amber-500" />
         <h2 className="text-lg sm:text-xl font-semibold" style={{ fontFamily: "'Space Grotesk', sans-serif" }}>
-          Redirections ({redirectAnalysis.totalRedirects})
+          {t('redirect.title')} ({redirectAnalysis.totalRedirects})
         </h2>
       </div>
       
@@ -52,7 +55,7 @@ export function RedirectSection({ redirectAnalysis }: RedirectSectionProps) {
           ))}
           <div className="pt-2 border-t border-border/30">
             <p className="text-xs text-muted-foreground">
-              URL finale : <span className="text-foreground font-medium">{redirectAnalysis.finalUrl}</span>
+              {t('redirect.finalUrl')} : <span className="text-foreground font-medium">{redirectAnalysis.finalUrl}</span>
             </p>
           </div>
         </div>
@@ -77,15 +80,17 @@ interface SchemaOrgSectionProps {
 }
 
 export function SchemaOrgSection({ schemaOrgAnalysis }: SchemaOrgSectionProps) {
+  const { t } = useI18n();
+
   return (
     <div className="space-y-3">
       <div className="flex items-center gap-2">
         <Code2 className="h-5 w-5 text-primary" />
         <h2 className="text-lg sm:text-xl font-semibold" style={{ fontFamily: "'Space Grotesk', sans-serif" }}>
-          Schema.org / Données structurées
+          {t('schema.title')}
         </h2>
         <span className="text-[10px] sm:text-xs bg-primary/10 text-primary px-2 py-0.5 rounded-full font-medium">
-          {schemaOrgAnalysis.totalFound} type(s)
+          {schemaOrgAnalysis.totalFound} {t('schema.types')}
         </span>
       </div>
 
@@ -100,10 +105,10 @@ export function SchemaOrgSection({ schemaOrgAnalysis }: SchemaOrgSectionProps) {
                 <Blocks className={cn("h-4 w-4", schema.valid ? "text-emerald-500" : "text-amber-500")} />
                 <span className="text-sm font-semibold text-foreground">{schema.type}</span>
                 {schema.valid ? (
-                  <span className="text-[10px] bg-emerald-500/10 text-emerald-600 px-1.5 py-0.5 rounded-full ml-auto">✓ Valide</span>
+                  <span className="text-[10px] bg-emerald-500/10 text-emerald-600 px-1.5 py-0.5 rounded-full ml-auto">✓ {t('schema.valid')}</span>
                 ) : (
                   <span className="text-[10px] bg-amber-500/10 text-amber-600 px-1.5 py-0.5 rounded-full ml-auto">
-                    {schema.issues.length} problème(s)
+                    {schema.issues.length} {t('schema.issues')}
                   </span>
                 )}
               </div>
@@ -121,21 +126,21 @@ export function SchemaOrgSection({ schemaOrgAnalysis }: SchemaOrgSectionProps) {
           ))}
 
           <div className="pt-2 text-xs text-muted-foreground">
-            {schemaOrgAnalysis.validCount}/{schemaOrgAnalysis.totalFound} type(s) valide(s)
+            {t('schema.validCount', { valid: schemaOrgAnalysis.validCount, total: schemaOrgAnalysis.totalFound })}
           </div>
         </div>
       ) : (
         <div className="glass-card rounded-xl p-4 border-amber-500/20">
           <p className="text-sm text-amber-600 flex items-center gap-2">
             <AlertTriangle className="h-4 w-4" />
-            Aucune donnée structurée JSON-LD détectée.
+            {t('schema.noData')}
           </p>
         </div>
       )}
 
       {schemaOrgAnalysis.recommendations.length > 0 && (
         <div className="glass-card rounded-xl p-4 space-y-1.5">
-          <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-2">Recommandations</p>
+          <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-2">{t('schema.recommendations')}</p>
           {schemaOrgAnalysis.recommendations.map((rec, i) => (
             <p key={i} className="text-xs sm:text-sm text-foreground flex items-start gap-2">
               <span className="text-primary mt-0.5">→</span>

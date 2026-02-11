@@ -1,7 +1,7 @@
 import { SiteHeader } from "@/components/layout/SiteHeader";
 import { SiteFooter } from "@/components/layout/SiteFooter";
 import { useI18n } from "@/lib/i18n";
-import { Shield, Globe, Cpu, FileText, AlertTriangle, CheckCircle2, Database, Zap } from "lucide-react";
+import { Shield, Globe, Cpu, FileText, AlertTriangle, CheckCircle2, Database, Zap, Gauge } from "lucide-react";
 import { motion } from "framer-motion";
 import { Link } from "react-router-dom";
 
@@ -13,6 +13,7 @@ const Methodology = () => {
     { icon: Database, name: "Firecrawl Map API", desc: t('method.tech.map') },
     { icon: Cpu, name: "Lovable AI Gateway (Gemini)", desc: t('method.tech.ai') },
     { icon: Zap, name: "Direct HTTP", desc: t('method.tech.http') },
+    { icon: Gauge, name: "Google PageSpeed Insights", desc: t('method.tech.pagespeed') },
   ];
 
   const steps = [
@@ -32,13 +33,15 @@ const Methodology = () => {
   ];
 
   const scoring = [
-    { cat: "Meta Tags", weight: "20/100" },
+    { cat: "Meta Tags", weight: "15/100" },
     { cat: "Content & Structure", weight: "15/100" },
-    { cat: "Indexability", weight: "20/100" },
+    { cat: "Indexability", weight: "15/100" },
     { cat: "Social & Sharing", weight: "10/100" },
-    { cat: "Mobile & Performance", weight: "15/100" },
+    { cat: "Mobile & Performance", weight: "10/100" },
     { cat: "Links Health", weight: "10/100" },
     { cat: "Internationalization", weight: "10/100" },
+    { cat: "Image Accessibility", weight: "5/100" },
+    { cat: "Security (HTTPS)", weight: "10/100" },
   ];
 
   return (
