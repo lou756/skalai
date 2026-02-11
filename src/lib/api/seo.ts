@@ -219,6 +219,9 @@ export interface SEOAnalysisResult {
     error: string | null;
     isValid: boolean;
     urlCount: number | null;
+    isCrossDomain?: boolean;
+    sitemapDomain?: string;
+    foreignUrlCount?: number;
   };
   robotsTxt: {
     found: boolean;
