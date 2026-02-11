@@ -1499,169 +1499,77 @@ function buildActionReport(
   });
 
   // ══════════════════════════════════════════════════════════════════
-  // LOVABLE PROMPTS — Solutions prêtes à soumettre à Lovable
+  // SOLUTIONS — Génération dynamique à partir de TOUS les problèmes
   // ══════════════════════════════════════════════════════════════════
 
-  const url = meta.canonical || '';
+  // Map each issue category to a solution category
+  const categoryMap: Record<string, LovablePrompt['category']> = {
+    'Meta Tags': 'seo',
+    'Indexation': 'seo',
+    'Structure': 'seo',
+    'Content': 'content',
+    'Mobile & Performance': 'performance',
+    'Security': 'security',
+    'Image Accessibility': 'seo',
+    'Heading Hierarchy': 'seo',
+    'Schema.org': 'seo',
+    'Merchant Center': 'merchant',
+  };
 
-  // SEO — Meta tags
-  if (!meta.title || !meta.description) {
-    const missingParts = [];
-    if (!meta.title) missingParts.push('balise <title> optimisée (50-60 caractères, mot-clé principal au début)');
-    if (!meta.description) missingParts.push('meta description (150-160 caractères, call-to-action)');
+  // Generate a solution prompt for EVERY issue detected
+  const seenTitles = new Set<string>();
+
+  issues.forEach(issue => {
+    // Avoid duplicates
+    const key = issue.issue.substring(0, 50);
+    if (seenTitles.has(key)) return;
+    seenTitles.add(key);
+
+    const cat = categoryMap[issue.category] || 'seo';
+
     lovablePrompts.push({
-      title: 'Ajouter les meta tags manquants',
-      prompt: `Ajoute les meta tags SEO manquants sur mon site : ${missingParts.join(' et ')}. Assure-toi que le title contient le mot-clé principal et que la meta description inclut un appel à l'action pour améliorer le taux de clic. Ajoute aussi une balise canonical pointant vers l'URL principale.`,
-      category: 'seo',
-      priority: 'High',
+      title: issue.issue,
+      prompt: `Problème détecté : ${issue.issue}.\n\nImpact : ${issue.impact}\n\nSolution recommandée : ${issue.fix}`,
+      category: cat,
+      priority: issue.priority,
     });
-  }
+  });
 
-  // SEO — H1
-  if (!meta.hasH1 || meta.h1Count > 1) {
-    lovablePrompts.push({
-      title: meta.h1Count > 1 ? 'Corriger les balises H1 multiples' : 'Ajouter une balise H1',
-      prompt: meta.h1Count > 1
-        ? `Mon site a ${meta.h1Count} balises H1 sur la même page. Corrige la structure pour garder un seul H1 contenant le mot-clé principal, et convertis les autres en H2 ou H3 selon la hiérarchie du contenu.`
-        : `Ajoute une balise H1 unique contenant le mot-clé principal de la page. Le H1 doit être le premier heading visible et résumer le sujet de la page en une phrase claire.`,
-      category: 'seo',
-      priority: 'High',
-    });
-  }
-
-  // SEO — Open Graph + Twitter Cards
-  if (!meta.hasOgTags || !meta.hasTwitterCards) {
-    lovablePrompts.push({
-      title: 'Ajouter les balises de partage social',
-      prompt: `Ajoute les balises Open Graph (og:title, og:description, og:image, og:url, og:type) et Twitter Cards (twitter:card, twitter:title, twitter:description, twitter:image) sur toutes les pages de mon site. Utilise une image de partage de 1200x630px minimum. Ces balises sont essentielles pour un bon affichage quand le site est partagé sur les réseaux sociaux.`,
-      category: 'seo',
-      priority: 'Medium',
-    });
-  }
-
-  // SEO — Sitemap / robots.txt
-  if (!sitemap.found) {
-    lovablePrompts.push({
-      title: 'Générer et déployer un sitemap.xml',
-      prompt: `Mon site n'a pas de sitemap.xml. Crée un sitemap.xml valide listant toutes les pages du site avec les balises <loc>, <lastmod>, <changefreq> et <priority>. Place-le à la racine du site et référence-le dans le robots.txt avec la directive Sitemap:.`,
-      category: 'seo',
-      priority: 'High',
-    });
-  }
-  if (!robotsTxt.found) {
-    lovablePrompts.push({
-      title: 'Créer un fichier robots.txt',
-      prompt: `Mon site n'a pas de robots.txt. Crée un fichier robots.txt à la racine avec User-agent: *, Allow: /, et la directive Sitemap: pointant vers le sitemap.xml. Assure-toi de ne pas bloquer Googlebot ou les ressources CSS/JS essentielles.`,
-      category: 'seo',
-      priority: 'Medium',
-    });
-  }
-
-  // SEO — Langue et hreflang
-  if (!meta.language) {
-    lovablePrompts.push({
-      title: 'Déclarer la langue du site',
-      prompt: `Mon site n'a pas d'attribut lang sur la balise <html>. Ajoute lang="fr" (ou la langue appropriée) sur la balise <html> de chaque page. Si le site est multilingue, ajoute aussi les balises hreflang pour chaque version linguistique.`,
-      category: 'seo',
-      priority: 'Medium',
-    });
-  }
-
-  // SEO — Canonical
-  if (!meta.canonical) {
-    lovablePrompts.push({
-      title: 'Ajouter les balises canonical',
-      prompt: `Mon site n'a pas de balise canonical. Ajoute <link rel="canonical" href="URL"> dans le <head> de chaque page, pointant vers l'URL principale (sans paramètres, sans www en doublon). Cela évite le contenu dupliqué et consolide le référencement.`,
-      category: 'seo',
-      priority: 'Medium',
-    });
-  }
-
-  // Performance — Core Web Vitals
-  if (issues.some(i => i.category === 'Mobile & Performance')) {
-    lovablePrompts.push({
-      title: 'Optimiser les Core Web Vitals',
-      prompt: `Mon site a des problèmes de performance détectés par Google PageSpeed Insights. Optimise les Core Web Vitals : ajoute le lazy loading sur toutes les images (loading="lazy"), compresse les images en WebP, minifie le CSS/JS, ajoute les attributs width/height sur les images pour éviter le CLS (Cumulative Layout Shift), et utilise le preconnect pour les ressources tierces.`,
-      category: 'performance',
-      priority: 'Medium',
-    });
-  }
-
-  // Content — Améliorations
-  if (contentAnalysis.wordCount < 300) {
-    lovablePrompts.push({
-      title: 'Enrichir le contenu textuel',
-      prompt: `Mon site n'a que ${contentAnalysis.wordCount} mots de contenu. Google recommande au minimum 300 mots pour les pages principales. Enrichis le contenu avec des paragraphes informatifs, des sections FAQ, et une structure avec des sous-titres H2/H3. Le contenu doit être unique, utile et répondre aux questions des utilisateurs.`,
-      category: 'content',
-      priority: 'Medium',
-    });
-  }
-
-  // Merchant — Données structurées produit
-  if (merchantAnalysis.isProductPage) {
-    if (!merchantAnalysis.structuredDataFound) {
-      lovablePrompts.push({
-        title: 'Ajouter le balisage Schema.org Product',
-        prompt: `Mon site e-commerce n'a pas de données structurées Product (JSON-LD). Ajoute un script type="application/ld+json" sur chaque page produit avec : @type: "Product", name, description, image, brand, gtin13 (code EAN), offers: { @type: "Offer", price, priceCurrency, availability (InStock/OutOfStock), url }. Ces données sont obligatoires pour Google Shopping et le Merchant Center.`,
-        category: 'merchant',
-        priority: 'High',
-      });
-    }
-
-    const products = merchantAnalysis.products;
-    const withoutGTIN = products.filter(p => !p.gtin && !(p.mpn && p.brand));
-    if (withoutGTIN.length > 0) {
-      lovablePrompts.push({
-        title: `Ajouter les identifiants produits (GTIN/EAN)`,
-        prompt: `${withoutGTIN.length} produit(s) sur mon site n'ont pas d'identifiant GTIN/EAN. Ajoute le champ gtin13 (code EAN à 13 chiffres) dans les données structurées JSON-LD de chaque produit. Si aucun GTIN n'est disponible, utilise les champs mpn (référence fabricant) + brand à la place. Sans identifiant, les produits seront refusés par Google Shopping.`,
-        category: 'merchant',
-        priority: 'High',
-      });
-    }
-
+  // Add merchant compliance-specific solutions if not already covered
+  if (merchantAnalysis.isProductPage && merchantAnalysis.compliance) {
     const compliance = merchantAnalysis.compliance;
-    if (compliance) {
-      const missingPolicies = compliance.checks.filter(c => !c.found && c.category === 'policy');
-      if (missingPolicies.length > 0) {
-        const pages = missingPolicies.map(c => c.name).join(', ');
+    
+    compliance.checks.filter(c => !c.found && c.category === 'policy').forEach(check => {
+      const key = `Créer : ${check.name}`;
+      if (!seenTitles.has(key.substring(0, 50))) {
+        seenTitles.add(key.substring(0, 50));
+        const policyGuides: Record<string, string> = {
+          'Politique de retour/remboursement': 'Crée une page dédiée avec : délai de retour (14-30 jours en UE), conditions du produit, processus étape par étape, mode de remboursement, exceptions. URL : /politique-de-retour',
+          'Politique de livraison': 'Crée une page avec : zones de livraison, délais par zone, coûts (ou seuil gratuité), transporteurs, suivi de commande. URL : /livraison',
+          'CGV / Conditions générales': 'Crée une page avec : identité vendeur (raison sociale, adresse, SIRET), conditions de vente, modalités de paiement, droit applicable. URL : /cgv',
+          'Page de contact': 'Crée une page avec : adresse physique, email, téléphone, formulaire de contact. Google vérifie manuellement ces informations.',
+          'Politique de confidentialité': 'Crée une page RGPD avec : données collectées, base légale, durée de conservation, droits utilisateurs, cookies, tiers. URL : /confidentialite',
+        };
         lovablePrompts.push({
-          title: 'Créer les pages de politique obligatoires',
-          prompt: `Mon site e-commerce est incomplet pour Google Merchant Center. Il manque les pages suivantes : ${pages}. Crée chaque page avec un contenu complet et professionnel respectant les exigences Google. Chaque politique doit être détaillée (minimum 200 mots), accessible depuis le footer, et contenir les clauses légales requises.`,
+          title: `Créer : ${check.name}`,
+          prompt: `Page obligatoire manquante pour Google Merchant Center : ${check.name}.\n\n${policyGuides[check.name] || `Crée une page "${check.name}" complète et professionnelle.`}`,
           category: 'merchant',
           priority: 'High',
         });
       }
-
-      const insufficientPages = compliance.checks.filter(c => c.found && c.contentAnalyzed && !c.contentValid);
-      if (insufficientPages.length > 0) {
-        const details = insufficientPages.map(c => `${c.name} (${c.contentIssues.join(', ')})`).join(' ; ');
-        lovablePrompts.push({
-          title: 'Améliorer le contenu des pages de politique',
-          prompt: `Certaines pages de politique de mon site e-commerce ont un contenu insuffisant pour Google Merchant Center. Voici les problèmes détectés : ${details}. Enrichis chaque page pour qu'elle soit complète, détaillée et conforme aux exigences de Google. Le contenu doit être spécifique (pas de texte générique), mentionner des délais concrets, et couvrir tous les cas d'usage.`,
-          category: 'merchant',
-          priority: 'High',
-        });
-      }
-    }
-  }
-
-  // Security
-  if (issues.some(i => i.category === 'Security')) {
-    lovablePrompts.push({
-      title: 'Renforcer la sécurité du site',
-      prompt: `Mon site a des problèmes de sécurité HTTP détectés. Ajoute les en-têtes de sécurité suivants : Strict-Transport-Security (HSTS), X-Content-Type-Options: nosniff, X-Frame-Options: DENY, Content-Security-Policy, et Referrer-Policy: strict-origin-when-cross-origin. Assure-toi aussi que tout le site est en HTTPS avec redirection 301 depuis HTTP.`,
-      category: 'security',
-      priority: 'Medium',
     });
-  }
 
-  // Schema.org manquant
-  if (issues.some(i => i.issue?.includes('JSON-LD') || i.issue?.includes('Schema.org') || i.issue?.includes('structured data'))) {
-    lovablePrompts.push({
-      title: 'Ajouter les données structurées Schema.org',
-      prompt: `Mon site n'a pas de données structurées JSON-LD suffisantes. Ajoute au minimum : Organization (nom, logo, URL, réseaux sociaux), WebSite (avec SearchAction pour le sitelinks searchbox), et BreadcrumbList pour la navigation. Si c'est un blog, ajoute Article. Si c'est un commerce local, ajoute LocalBusiness avec adresse, horaires et téléphone.`,
-      category: 'seo',
-      priority: 'Medium',
+    compliance.checks.filter(c => c.found && c.contentAnalyzed && !c.contentValid).forEach(check => {
+      const key = `Améliorer : ${check.name}`;
+      if (!seenTitles.has(key.substring(0, 50))) {
+        seenTitles.add(key.substring(0, 50));
+        lovablePrompts.push({
+          title: `Améliorer : ${check.name}`,
+          prompt: `Le contenu de la page "${check.name}" est insuffisant pour Google Merchant Center.\n\nProblèmes : ${check.contentIssues.join(' • ')}\n\nEnrichis le contenu pour qu'il soit complet, détaillé et conforme aux exigences Google.`,
+          category: 'merchant',
+          priority: 'High',
+        });
+      }
     });
   }
 
