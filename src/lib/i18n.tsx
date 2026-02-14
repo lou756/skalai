@@ -347,6 +347,10 @@ const translations = {
     'lovable.copy': 'Copier',
     'lovable.copied': 'Copié !',
     'lovable.disclaimer': 'Ces prompts sont générés à partir des problèmes réels détectés lors de l\'audit. Copiez-les et soumettez-les pour obtenir les corrections adaptées à votre projet.',
+    'lovable.copyAll': 'Copier tout en un prompt',
+    'lovable.copyAllCopied': 'Prompt copié !',
+    'results.copyAllIssues': 'Copier tous les problèmes en un prompt',
+    'results.copyAllIssuesCopied': 'Prompt copié !',
     // Multi-page analysis
     'multiPage.title': 'Analyse multi-pages & langues',
     'multiPage.analyzing': 'Analyse en cours...',
@@ -685,6 +689,10 @@ const translations = {
     'lovable.copy': 'Copy',
     'lovable.copied': 'Copied!',
     'lovable.disclaimer': 'These prompts are generated from real issues detected during the audit. Copy and submit them to get the appropriate fixes for your project.',
+    'lovable.copyAll': 'Copy all as one prompt',
+    'lovable.copyAllCopied': 'Prompt copied!',
+    'results.copyAllIssues': 'Copy all issues as one prompt',
+    'results.copyAllIssuesCopied': 'Prompt copied!',
     // Multi-page analysis
     'multiPage.title': 'Multi-page & language analysis',
     'multiPage.analyzing': 'Analyzing...',
