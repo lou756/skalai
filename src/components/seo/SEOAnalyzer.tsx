@@ -1,8 +1,9 @@
 import { useState, forwardRef, useImperativeHandle, useEffect } from "react";
-import { Search, Loader2, ExternalLink, FileText } from "lucide-react";
+import { Search, Loader2, ExternalLink, FileText, Copy, Check } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useToast } from "@/hooks/use-toast";
+import { cn } from "@/lib/utils";
 import { useI18n } from "@/lib/i18n";
 import { analyzeSEO, type SEOAnalysisResult } from "@/lib/api/seo";
 import { saveAnalysis } from "@/lib/api/history";
@@ -191,38 +192,12 @@ export const SEOAnalyzer = forwardRef<SEOAnalyzerHandle, SEOAnalyzerProps>(
               <MultiPageAnalysis languages={result.discoveredLanguages} baseUrl={result.url} />
             )}
             {result.issues.length > 0 ? (
-              <div className="space-y-4 sm:space-y-6">
-                <h2 className="text-lg sm:text-xl font-semibold" style={{ fontFamily: "'Space Grotesk', sans-serif" }}>
-                  {t('results.issues')} ({result.issues.length})
-                </h2>
-
-                {highPriorityIssues.length > 0 && (
-                  <div className="space-y-3">
-                    <h3 className="text-xs sm:text-sm font-medium text-destructive uppercase tracking-wide">
-                      {t('results.highPriority')} ({highPriorityIssues.length})
-                    </h3>
-                    {highPriorityIssues.map((issue) => <SEOIssueCard key={issue.id} issue={issue} />)}
-                  </div>
-                )}
-
-                {mediumPriorityIssues.length > 0 && (
-                  <div className="space-y-3">
-                    <h3 className="text-xs sm:text-sm font-medium text-amber-600 uppercase tracking-wide">
-                      {t('results.mediumPriority')} ({mediumPriorityIssues.length})
-                    </h3>
-                    {mediumPriorityIssues.map((issue) => <SEOIssueCard key={issue.id} issue={issue} />)}
-                  </div>
-                )}
-
-                {lowPriorityIssues.length > 0 && (
-                  <div className="space-y-3">
-                    <h3 className="text-xs sm:text-sm font-medium text-primary uppercase tracking-wide">
-                      {t('results.lowPriority')} ({lowPriorityIssues.length})
-                    </h3>
-                    {lowPriorityIssues.map((issue) => <SEOIssueCard key={issue.id} issue={issue} />)}
-                  </div>
-                )}
-              </div>
+              <IssuesSection
+                issues={result.issues}
+                highPriorityIssues={highPriorityIssues}
+                mediumPriorityIssues={mediumPriorityIssues}
+                lowPriorityIssues={lowPriorityIssues}
+              />
             ) : (
               <div className="glass-card rounded-xl p-5 sm:p-6 text-center border-primary/20">
                 <p className="text-primary font-medium text-sm sm:text-base">{t('results.noIssues')}</p>
@@ -246,3 +221,89 @@ export const SEOAnalyzer = forwardRef<SEOAnalyzerHandle, SEOAnalyzerProps>(
     );
   }
 );
+
+function IssuesSection({ issues, highPriorityIssues, mediumPriorityIssues, lowPriorityIssues }: {
+  issues: import("@/lib/api/seo").SEOIssue[];
+  highPriorityIssues: import("@/lib/api/seo").SEOIssue[];
+  mediumPriorityIssues: import("@/lib/api/seo").SEOIssue[];
+  lowPriorityIssues: import("@/lib/api/seo").SEOIssue[];
+}) {
+  const { t } = useI18n();
+  const [copied, setCopied] = useState(false);
+
+  const buildIssuesPrompt = () => {
+    let prompt = `Voici tous les problèmes SEO détectés sur le site :\n\n`;
+    issues.forEach((issue, i) => {
+      prompt += `${i + 1}. [${issue.priority}] ${issue.issue}\n`;
+      prompt += `   Catégorie : ${issue.category}\n`;
+      prompt += `   Impact : ${issue.impact}\n`;
+      prompt += `   Correction : ${issue.fix}\n\n`;
+    });
+    return prompt.trim();
+  };
+
+  const handleCopyAll = async () => {
+    const prompt = buildIssuesPrompt();
+    try {
+      await navigator.clipboard.writeText(prompt);
+    } catch {
+      const ta = document.createElement('textarea');
+      ta.value = prompt;
+      document.body.appendChild(ta);
+      ta.select();
+      document.execCommand('copy');
+      document.body.removeChild(ta);
+    }
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
+
+  return (
+    <div className="space-y-4 sm:space-y-6">
+      <div className="flex items-center justify-between gap-2 flex-wrap">
+        <h2 className="text-lg sm:text-xl font-semibold" style={{ fontFamily: "'Space Grotesk', sans-serif" }}>
+          {t('results.issues')} ({issues.length})
+        </h2>
+        <button
+          onClick={handleCopyAll}
+          className={cn(
+            "flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg font-medium transition-all",
+            copied
+              ? "bg-emerald-500/10 text-emerald-600"
+              : "bg-primary/10 text-primary hover:bg-primary/20"
+          )}
+        >
+          {copied ? <Check className="h-3 w-3" /> : <Copy className="h-3 w-3" />}
+          {copied ? t('results.copyAllIssuesCopied') : t('results.copyAllIssues')}
+        </button>
+      </div>
+
+      {highPriorityIssues.length > 0 && (
+        <div className="space-y-3">
+          <h3 className="text-xs sm:text-sm font-medium text-destructive uppercase tracking-wide">
+            {t('results.highPriority')} ({highPriorityIssues.length})
+          </h3>
+          {highPriorityIssues.map((issue) => <SEOIssueCard key={issue.id} issue={issue} />)}
+        </div>
+      )}
+
+      {mediumPriorityIssues.length > 0 && (
+        <div className="space-y-3">
+          <h3 className="text-xs sm:text-sm font-medium text-amber-600 uppercase tracking-wide">
+            {t('results.mediumPriority')} ({mediumPriorityIssues.length})
+          </h3>
+          {mediumPriorityIssues.map((issue) => <SEOIssueCard key={issue.id} issue={issue} />)}
+        </div>
+      )}
+
+      {lowPriorityIssues.length > 0 && (
+        <div className="space-y-3">
+          <h3 className="text-xs sm:text-sm font-medium text-primary uppercase tracking-wide">
+            {t('results.lowPriority')} ({lowPriorityIssues.length})
+          </h3>
+          {lowPriorityIssues.map((issue) => <SEOIssueCard key={issue.id} issue={issue} />)}
+        </div>
+      )}
+    </div>
+  );
+}

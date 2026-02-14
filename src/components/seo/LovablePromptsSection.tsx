@@ -11,6 +11,7 @@ interface LovablePromptsSectionProps {
 export function LovablePromptsSection({ prompts }: LovablePromptsSectionProps) {
   const { t } = useI18n();
   const [copiedIndex, setCopiedIndex] = useState<number | null>(null);
+  const [allCopied, setAllCopied] = useState(false);
 
   if (!prompts || prompts.length === 0) return null;
 
@@ -71,6 +72,32 @@ export function LovablePromptsSection({ prompts }: LovablePromptsSectionProps) {
   const lowPrompts = prompts.filter(p => p.priority === 'Low');
   const grouped = [...highPrompts, ...mediumPrompts, ...lowPrompts];
 
+
+  const buildAllPromptsText = () => {
+    let text = `Voici toutes les solutions recommandées suite à l'audit SEO :\n\n`;
+    grouped.forEach((p, i) => {
+      text += `${i + 1}. [${p.priority}] [${getCategoryLabel(p.category)}] ${p.title}\n`;
+      text += `${p.prompt}\n\n`;
+    });
+    return text.trim();
+  };
+
+  const handleCopyAll = async () => {
+    const text = buildAllPromptsText();
+    try {
+      await navigator.clipboard.writeText(text);
+    } catch {
+      const ta = document.createElement('textarea');
+      ta.value = text;
+      document.body.appendChild(ta);
+      ta.select();
+      document.execCommand('copy');
+      document.body.removeChild(ta);
+    }
+    setAllCopied(true);
+    setTimeout(() => setAllCopied(false), 2000);
+  };
+
   return (
     <div className="space-y-4">
       <div className="flex items-center gap-3">
@@ -83,9 +110,23 @@ export function LovablePromptsSection({ prompts }: LovablePromptsSectionProps) {
           </h2>
           <p className="text-xs text-muted-foreground">{t('lovable.subtitle')}</p>
         </div>
-        <span className="text-[10px] px-2 py-0.5 rounded-full bg-primary/10 text-primary font-medium ml-auto">
-          {prompts.length} {t('lovable.solutions')}
-        </span>
+        <div className="ml-auto flex items-center gap-2">
+          <button
+            onClick={handleCopyAll}
+            className={cn(
+              "flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg font-medium transition-all",
+              allCopied
+                ? "bg-emerald-500/10 text-emerald-600"
+                : "bg-primary/10 text-primary hover:bg-primary/20"
+            )}
+          >
+            {allCopied ? <Check className="h-3 w-3" /> : <Copy className="h-3 w-3" />}
+            {allCopied ? t('lovable.copyAllCopied') : t('lovable.copyAll')}
+          </button>
+          <span className="text-[10px] px-2 py-0.5 rounded-full bg-primary/10 text-primary font-medium">
+            {prompts.length} {t('lovable.solutions')}
+          </span>
+        </div>
       </div>
 
       <div className="space-y-3">
